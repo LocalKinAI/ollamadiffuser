@@ -103,7 +103,7 @@ class ModelRegistry:
                     "min_ram_gb": 8,
                     "recommended_ram_gb": 16,
                     "disk_space_gb": 3,
-                    "supported_devices": ["CUDA", "CPU"],
+                    "supported_devices": ["CUDA", "MPS", "CPU"],
                     "performance_notes": "Heavily quantized, lowest quality but very fast"
                 },
                 "license_info": {
@@ -128,7 +128,7 @@ class ModelRegistry:
                     "min_ram_gb": 10,
                     "recommended_ram_gb": 16,
                     "disk_space_gb": 4,
-                    "supported_devices": ["CUDA", "CPU"],
+                    "supported_devices": ["CUDA", "MPS", "CPU"],
                     "performance_notes": "Light quantization, good speed/quality balance"
                 },
                 "license_info": {
@@ -153,7 +153,7 @@ class ModelRegistry:
                     "min_ram_gb": 12,
                     "recommended_ram_gb": 20,
                     "disk_space_gb": 6,
-                    "supported_devices": ["CUDA", "CPU"],
+                    "supported_devices": ["CUDA", "MPS", "CPU"],
                     "performance_notes": "Recommended quantization level - good quality and speed"
                 },
                 "license_info": {
@@ -178,7 +178,7 @@ class ModelRegistry:
                     "min_ram_gb": 12,
                     "recommended_ram_gb": 20,
                     "disk_space_gb": 6,
-                    "supported_devices": ["CUDA", "CPU"],
+                    "supported_devices": ["CUDA", "MPS", "CPU"],
                     "performance_notes": "Q4_0 quantization - fast inference with good quality"
                 },
                 "license_info": {
@@ -203,7 +203,7 @@ class ModelRegistry:
                     "min_ram_gb": 12,
                     "recommended_ram_gb": 20,
                     "disk_space_gb": 6,
-                    "supported_devices": ["CUDA", "CPU"],
+                    "supported_devices": ["CUDA", "MPS", "CPU"],
                     "performance_notes": "Q4_1 quantization - improved Q4_0 with better accuracy"
                 },
                 "license_info": {
@@ -228,7 +228,7 @@ class ModelRegistry:
                     "min_ram_gb": 16,
                     "recommended_ram_gb": 24,
                     "disk_space_gb": 8,
-                    "supported_devices": ["CUDA", "CPU"],
+                    "supported_devices": ["CUDA", "MPS", "CPU"],
                     "performance_notes": "Higher quality quantization, slower but better results"
                 },
                 "license_info": {
@@ -253,7 +253,7 @@ class ModelRegistry:
                     "min_ram_gb": 16,
                     "recommended_ram_gb": 24,
                     "disk_space_gb": 8,
-                    "supported_devices": ["CUDA", "CPU"],
+                    "supported_devices": ["CUDA", "MPS", "CPU"],
                     "performance_notes": "Q5_0 quantization - good balance of size and quality"
                 },
                 "license_info": {
@@ -278,7 +278,7 @@ class ModelRegistry:
                     "min_ram_gb": 16,
                     "recommended_ram_gb": 24,
                     "disk_space_gb": 8,
-                    "supported_devices": ["CUDA", "CPU"],
+                    "supported_devices": ["CUDA", "MPS", "CPU"],
                     "performance_notes": "Q5_1 quantization - improved Q5_0 with better accuracy"
                 },
                 "license_info": {
@@ -303,7 +303,7 @@ class ModelRegistry:
                     "min_ram_gb": 20,
                     "recommended_ram_gb": 32,
                     "disk_space_gb": 10,
-                    "supported_devices": ["CUDA", "CPU"],
+                    "supported_devices": ["CUDA", "MPS", "CPU"],
                     "performance_notes": "High quality quantization, close to original"
                 },
                 "license_info": {
@@ -328,7 +328,7 @@ class ModelRegistry:
                     "min_ram_gb": 24,
                     "recommended_ram_gb": 36,
                     "disk_space_gb": 12,
-                    "supported_devices": ["CUDA", "CPU"],
+                    "supported_devices": ["CUDA", "MPS", "CPU"],
                     "performance_notes": "Very high quality, minimal quantization loss"
                 },
                 "license_info": {
@@ -353,7 +353,7 @@ class ModelRegistry:
                     "min_ram_gb": 32,
                     "recommended_ram_gb": 48,
                     "disk_space_gb": 16,
-                    "supported_devices": ["CUDA", "CPU"],
+                    "supported_devices": ["CUDA", "MPS", "CPU"],
                     "performance_notes": "Full precision, best quality but largest size"
                 },
                 "license_info": {
@@ -549,6 +549,557 @@ class ModelRegistry:
                     "disk_space_gb": 10,
                     "supported_devices": ["CUDA", "MPS", "CPU"],
                     "performance_notes": "Requires base SDXL model + ControlNet model. Good for depth-based control with SDXL quality."
+                }
+            },
+
+            # ===== Tier 1: Additional base models (use existing strategies) =====
+
+            "stable-diffusion-3.5-large": {
+                "repo_id": "stabilityai/stable-diffusion-3.5-large",
+                "model_type": "sd3",
+                "variant": "fp16",
+                "parameters": {
+                    "num_inference_steps": 28,
+                    "guidance_scale": 3.5
+                },
+                "hardware_requirements": {
+                    "min_vram_gb": 12,
+                    "recommended_vram_gb": 16,
+                    "min_ram_gb": 24,
+                    "recommended_ram_gb": 48,
+                    "disk_space_gb": 16,
+                    "supported_devices": ["CUDA", "MPS"],
+                    "performance_notes": "Large SD3.5 model. Higher quality than medium variant."
+                },
+                "license_info": {
+                    "type": "Stability AI Community License",
+                    "requires_agreement": True,
+                    "commercial_use": False
+                }
+            },
+
+            "stable-diffusion-3.5-large-turbo": {
+                "repo_id": "stabilityai/stable-diffusion-3.5-large-turbo",
+                "model_type": "sd3",
+                "variant": "fp16",
+                "parameters": {
+                    "num_inference_steps": 4,
+                    "guidance_scale": 0.0
+                },
+                "hardware_requirements": {
+                    "min_vram_gb": 12,
+                    "recommended_vram_gb": 16,
+                    "min_ram_gb": 24,
+                    "recommended_ram_gb": 48,
+                    "disk_space_gb": 16,
+                    "supported_devices": ["CUDA", "MPS"],
+                    "performance_notes": "Turbo variant with 4-step generation. Fast inference."
+                },
+                "license_info": {
+                    "type": "Stability AI Community License",
+                    "requires_agreement": True,
+                    "commercial_use": False
+                }
+            },
+
+            "realvisxl-v4": {
+                "repo_id": "SG161222/RealVisXL_V4.0",
+                "model_type": "sdxl",
+                "variant": "fp16",
+                "parameters": {
+                    "num_inference_steps": 30,
+                    "guidance_scale": 5.0
+                },
+                "hardware_requirements": {
+                    "min_vram_gb": 6,
+                    "recommended_vram_gb": 10,
+                    "min_ram_gb": 12,
+                    "recommended_ram_gb": 24,
+                    "disk_space_gb": 7,
+                    "supported_devices": ["CUDA", "MPS", "CPU"],
+                    "performance_notes": "Photorealistic SDXL finetune. Very popular community model."
+                },
+                "license_info": {
+                    "type": "CreativeML Open RAIL++-M",
+                    "requires_agreement": False,
+                    "commercial_use": True
+                }
+            },
+
+            "dreamshaper": {
+                "repo_id": "Lykon/DreamShaper",
+                "model_type": "sd15",
+                "variant": "fp16",
+                "parameters": {
+                    "num_inference_steps": 30,
+                    "guidance_scale": 7.0
+                },
+                "hardware_requirements": {
+                    "min_vram_gb": 4,
+                    "recommended_vram_gb": 6,
+                    "min_ram_gb": 8,
+                    "recommended_ram_gb": 16,
+                    "disk_space_gb": 5,
+                    "supported_devices": ["CUDA", "MPS", "CPU"],
+                    "performance_notes": "Popular community SD 1.5 model. Runs on most GPUs."
+                },
+                "license_info": {
+                    "type": "CreativeML Open RAIL-M",
+                    "requires_agreement": False,
+                    "commercial_use": True
+                }
+            },
+
+            "realistic-vision-v6": {
+                "repo_id": "SG161222/Realistic_Vision_V6.0_B1_noVAE",
+                "model_type": "sd15",
+                "variant": "fp16",
+                "parameters": {
+                    "num_inference_steps": 30,
+                    "guidance_scale": 5.0
+                },
+                "hardware_requirements": {
+                    "min_vram_gb": 4,
+                    "recommended_vram_gb": 6,
+                    "min_ram_gb": 8,
+                    "recommended_ram_gb": 16,
+                    "disk_space_gb": 5,
+                    "supported_devices": ["CUDA", "MPS", "CPU"],
+                    "performance_notes": "Photorealistic SD 1.5 model. Great for portraits."
+                },
+                "license_info": {
+                    "type": "CreativeML Open RAIL-M",
+                    "requires_agreement": False,
+                    "commercial_use": True
+                }
+            },
+
+            "sdxl-turbo": {
+                "repo_id": "stabilityai/sdxl-turbo",
+                "model_type": "sdxl",
+                "variant": "fp16",
+                "parameters": {
+                    "num_inference_steps": 1,
+                    "guidance_scale": 0.0
+                },
+                "hardware_requirements": {
+                    "min_vram_gb": 6,
+                    "recommended_vram_gb": 10,
+                    "min_ram_gb": 12,
+                    "recommended_ram_gb": 24,
+                    "disk_space_gb": 7,
+                    "supported_devices": ["CUDA", "MPS", "CPU"],
+                    "performance_notes": "Distilled SDXL. Single-step inference, extremely fast."
+                },
+                "license_info": {
+                    "type": "Stability AI Non-Commercial Research Community License",
+                    "requires_agreement": True,
+                    "commercial_use": False
+                }
+            },
+
+            # ===== Tier 2: Scheduler override models =====
+
+            "sdxl-lightning-4step": {
+                "repo_id": "ByteDance/SDXL-Lightning",
+                "model_type": "sdxl",
+                "variant": "fp16",
+                "parameters": {
+                    "num_inference_steps": 4,
+                    "guidance_scale": 0.0,
+                    "scheduler_class": "EulerDiscreteScheduler",
+                    "scheduler_kwargs": {
+                        "timestep_spacing": "trailing"
+                    }
+                },
+                "hardware_requirements": {
+                    "min_vram_gb": 6,
+                    "recommended_vram_gb": 10,
+                    "min_ram_gb": 12,
+                    "recommended_ram_gb": 24,
+                    "disk_space_gb": 7,
+                    "supported_devices": ["CUDA", "MPS", "CPU"],
+                    "performance_notes": "Lightning-fast SDXL with 4 steps."
+                },
+                "license_info": {
+                    "type": "OpenRAIL++",
+                    "requires_agreement": False,
+                    "commercial_use": True
+                }
+            },
+
+            # ===== Tier 3: FLUX pipeline variants =====
+
+            "flux.1-fill-dev": {
+                "repo_id": "black-forest-labs/FLUX.1-Fill-dev",
+                "model_type": "flux",
+                "variant": "fp16",
+                "parameters": {
+                    "pipeline_class": "FluxFillPipeline",
+                    "num_inference_steps": 28,
+                    "guidance_scale": 30.0,
+                    "max_sequence_length": 512
+                },
+                "hardware_requirements": {
+                    "min_vram_gb": 20,
+                    "recommended_vram_gb": 24,
+                    "min_ram_gb": 32,
+                    "recommended_ram_gb": 64,
+                    "disk_space_gb": 24,
+                    "supported_devices": ["CUDA"],
+                    "performance_notes": "FLUX inpainting/outpainting model."
+                },
+                "license_info": {
+                    "type": "FLUX.1 Non-Commercial License",
+                    "requires_agreement": True,
+                    "commercial_use": False
+                }
+            },
+
+            "flux.1-canny-dev": {
+                "repo_id": "black-forest-labs/FLUX.1-Canny-dev",
+                "model_type": "flux",
+                "variant": "fp16",
+                "parameters": {
+                    "pipeline_class": "FluxControlPipeline",
+                    "num_inference_steps": 28,
+                    "guidance_scale": 30.0,
+                    "max_sequence_length": 512
+                },
+                "hardware_requirements": {
+                    "min_vram_gb": 20,
+                    "recommended_vram_gb": 24,
+                    "min_ram_gb": 32,
+                    "recommended_ram_gb": 64,
+                    "disk_space_gb": 24,
+                    "supported_devices": ["CUDA"],
+                    "performance_notes": "FLUX canny edge control model."
+                },
+                "license_info": {
+                    "type": "FLUX.1 Non-Commercial License",
+                    "requires_agreement": True,
+                    "commercial_use": False
+                }
+            },
+
+            "flux.1-depth-dev": {
+                "repo_id": "black-forest-labs/FLUX.1-Depth-dev",
+                "model_type": "flux",
+                "variant": "fp16",
+                "parameters": {
+                    "pipeline_class": "FluxControlPipeline",
+                    "num_inference_steps": 28,
+                    "guidance_scale": 10.0,
+                    "max_sequence_length": 512
+                },
+                "hardware_requirements": {
+                    "min_vram_gb": 20,
+                    "recommended_vram_gb": 24,
+                    "min_ram_gb": 32,
+                    "recommended_ram_gb": 64,
+                    "disk_space_gb": 24,
+                    "supported_devices": ["CUDA"],
+                    "performance_notes": "FLUX depth control model."
+                },
+                "license_info": {
+                    "type": "FLUX.1 Non-Commercial License",
+                    "requires_agreement": True,
+                    "commercial_use": False
+                }
+            },
+
+            # ===== Tier 4: New-generation models (GenericPipelineStrategy) =====
+
+            "flux.2-dev": {
+                "repo_id": "black-forest-labs/FLUX.2-dev",
+                "model_type": "generic",
+                "variant": "fp16",
+                "parameters": {
+                    "pipeline_class": "Flux2Pipeline",
+                    "num_inference_steps": 28,
+                    "guidance_scale": 3.5,
+                    "torch_dtype": "bfloat16",
+                    "enable_cpu_offload": True
+                },
+                "hardware_requirements": {
+                    "min_vram_gb": 14,
+                    "recommended_vram_gb": 24,
+                    "min_ram_gb": 32,
+                    "recommended_ram_gb": 64,
+                    "disk_space_gb": 36,
+                    "supported_devices": ["CUDA"],
+                    "performance_notes": "FLUX.2 32B parameter model. Requires CPU offloading on consumer GPUs. Requires diffusers from source."
+                },
+                "license_info": {
+                    "type": "FLUX.2 Dev Non-Commercial License",
+                    "requires_agreement": True,
+                    "commercial_use": False
+                }
+            },
+
+            "flux.2-klein-4b": {
+                "repo_id": "black-forest-labs/FLUX.2-klein-4B",
+                "model_type": "generic",
+                "variant": "fp16",
+                "parameters": {
+                    "pipeline_class": "Flux2KleinPipeline",
+                    "num_inference_steps": 28,
+                    "guidance_scale": 3.5,
+                    "torch_dtype": "bfloat16"
+                },
+                "hardware_requirements": {
+                    "min_vram_gb": 10,
+                    "recommended_vram_gb": 16,
+                    "min_ram_gb": 16,
+                    "recommended_ram_gb": 32,
+                    "disk_space_gb": 10,
+                    "supported_devices": ["CUDA", "MPS"],
+                    "performance_notes": "Compact 4B FLUX.2 model. Apache 2.0 licensed. Requires diffusers from source."
+                },
+                "license_info": {
+                    "type": "Apache 2.0",
+                    "requires_agreement": False,
+                    "commercial_use": True
+                }
+            },
+
+            "z-image-turbo": {
+                "repo_id": "Tongyi-MAI/Z-Image-Turbo",
+                "model_type": "generic",
+                "variant": "fp16",
+                "parameters": {
+                    "pipeline_class": "ZImagePipeline",
+                    "num_inference_steps": 8,
+                    "guidance_scale": 5.0,
+                    "torch_dtype": "bfloat16"
+                },
+                "hardware_requirements": {
+                    "min_vram_gb": 10,
+                    "recommended_vram_gb": 16,
+                    "min_ram_gb": 16,
+                    "recommended_ram_gb": 32,
+                    "disk_space_gb": 14,
+                    "supported_devices": ["CUDA"],
+                    "performance_notes": "Alibaba 6B model. 8-step turbo generation. Bilingual Chinese/English. Requires diffusers from source."
+                },
+                "license_info": {
+                    "type": "Apache 2.0",
+                    "requires_agreement": False,
+                    "commercial_use": True
+                }
+            },
+
+            "sana-1.5": {
+                "repo_id": "Efficient-Large-Model/SANA1.5_1.6B_1024px_diffusers",
+                "model_type": "generic",
+                "variant": "fp16",
+                "parameters": {
+                    "pipeline_class": "SanaPipeline",
+                    "num_inference_steps": 20,
+                    "guidance_scale": 5.0,
+                    "torch_dtype": "float16"
+                },
+                "hardware_requirements": {
+                    "min_vram_gb": 8,
+                    "recommended_vram_gb": 12,
+                    "min_ram_gb": 16,
+                    "recommended_ram_gb": 32,
+                    "disk_space_gb": 4,
+                    "supported_devices": ["CUDA", "MPS", "CPU"],
+                    "performance_notes": "NVIDIA 1.6B model. Very efficient, competitive with 12B models."
+                },
+                "license_info": {
+                    "type": "Apache 2.0",
+                    "requires_agreement": False,
+                    "commercial_use": True
+                }
+            },
+
+            "cogview4": {
+                "repo_id": "THUDM/CogView4-6B",
+                "model_type": "generic",
+                "variant": "fp16",
+                "parameters": {
+                    "pipeline_class": "CogView4Pipeline",
+                    "num_inference_steps": 50,
+                    "guidance_scale": 3.5,
+                    "torch_dtype": "bfloat16"
+                },
+                "hardware_requirements": {
+                    "min_vram_gb": 12,
+                    "recommended_vram_gb": 18,
+                    "min_ram_gb": 16,
+                    "recommended_ram_gb": 32,
+                    "disk_space_gb": 14,
+                    "supported_devices": ["CUDA", "MPS"],
+                    "performance_notes": "Zhipu AI 6B model with GLM-4 text encoder. Bilingual Chinese/English. Tight fit on 16GB Apple Silicon."
+                },
+                "license_info": {
+                    "type": "Apache 2.0",
+                    "requires_agreement": False,
+                    "commercial_use": True
+                }
+            },
+
+            "kolors": {
+                "repo_id": "Kwai-Kolors/Kolors-diffusers",
+                "model_type": "generic",
+                "variant": "fp16",
+                "parameters": {
+                    "pipeline_class": "KolorsPipeline",
+                    "num_inference_steps": 50,
+                    "guidance_scale": 5.0,
+                    "torch_dtype": "float16",
+                    "enable_cpu_offload": True
+                },
+                "hardware_requirements": {
+                    "min_vram_gb": 8,
+                    "recommended_vram_gb": 18,
+                    "min_ram_gb": 16,
+                    "recommended_ram_gb": 32,
+                    "disk_space_gb": 18,
+                    "supported_devices": ["CUDA", "MPS"],
+                    "performance_notes": "Kuaishou 8.6B model with ChatGLM3 encoder. Bilingual Chinese/English. Midjourney-v6 level quality."
+                },
+                "license_info": {
+                    "type": "Kolors License",
+                    "requires_agreement": False,
+                    "commercial_use": True
+                }
+            },
+
+            "hunyuan-dit": {
+                "repo_id": "Tencent-Hunyuan/HunyuanDiT-v1.2-Diffusers",
+                "model_type": "generic",
+                "variant": "fp16",
+                "parameters": {
+                    "pipeline_class": "HunyuanDiTPipeline",
+                    "num_inference_steps": 50,
+                    "guidance_scale": 5.0,
+                    "torch_dtype": "float16",
+                    "enable_cpu_offload": True
+                },
+                "hardware_requirements": {
+                    "min_vram_gb": 6,
+                    "recommended_vram_gb": 16,
+                    "min_ram_gb": 16,
+                    "recommended_ram_gb": 32,
+                    "disk_space_gb": 12,
+                    "supported_devices": ["CUDA", "MPS"],
+                    "performance_notes": "Tencent 1.5B model with dual text encoders (mT5 + bilingual CLIP). Fine-grained Chinese understanding."
+                },
+                "license_info": {
+                    "type": "Tencent Hunyuan Community License",
+                    "requires_agreement": False,
+                    "commercial_use": True
+                }
+            },
+
+            "lumina-2": {
+                "repo_id": "Alpha-VLLM/Lumina-Image-2.0",
+                "model_type": "generic",
+                "variant": "fp16",
+                "parameters": {
+                    "pipeline_class": "Lumina2Pipeline",
+                    "num_inference_steps": 30,
+                    "guidance_scale": 4.0,
+                    "torch_dtype": "bfloat16",
+                    "enable_cpu_offload": True
+                },
+                "hardware_requirements": {
+                    "min_vram_gb": 8,
+                    "recommended_vram_gb": 16,
+                    "min_ram_gb": 16,
+                    "recommended_ram_gb": 32,
+                    "disk_space_gb": 6,
+                    "supported_devices": ["CUDA", "MPS"],
+                    "performance_notes": "Alpha-VLLM 2B model. Unified text+image token architecture. Works on Apple Silicon (tight on 16GB)."
+                },
+                "license_info": {
+                    "type": "Apache 2.0",
+                    "requires_agreement": False,
+                    "commercial_use": True
+                }
+            },
+
+            "pixart-sigma": {
+                "repo_id": "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
+                "model_type": "generic",
+                "variant": "fp16",
+                "parameters": {
+                    "pipeline_class": "PixArtSigmaPipeline",
+                    "num_inference_steps": 20,
+                    "guidance_scale": 4.5,
+                    "torch_dtype": "float16"
+                },
+                "hardware_requirements": {
+                    "min_vram_gb": 6,
+                    "recommended_vram_gb": 10,
+                    "min_ram_gb": 8,
+                    "recommended_ram_gb": 16,
+                    "disk_space_gb": 3,
+                    "supported_devices": ["CUDA", "MPS", "CPU"],
+                    "performance_notes": "Very lightweight 0.6B model. 4K capable. Outperforms much larger models."
+                },
+                "license_info": {
+                    "type": "PixArt Open License",
+                    "requires_agreement": False,
+                    "commercial_use": True
+                }
+            },
+
+            "auraflow": {
+                "repo_id": "fal/AuraFlow-v0.3",
+                "model_type": "generic",
+                "variant": "fp16",
+                "parameters": {
+                    "pipeline_class": "AuraFlowPipeline",
+                    "num_inference_steps": 50,
+                    "guidance_scale": 3.5,
+                    "torch_dtype": "float16",
+                    "enable_cpu_offload": True
+                },
+                "hardware_requirements": {
+                    "min_vram_gb": 12,
+                    "recommended_vram_gb": 20,
+                    "min_ram_gb": 16,
+                    "recommended_ram_gb": 32,
+                    "disk_space_gb": 14,
+                    "supported_devices": ["CUDA"],
+                    "performance_notes": "Fal 6.8B model. Largest Apache 2.0 licensed text-to-image model."
+                },
+                "license_info": {
+                    "type": "Apache 2.0",
+                    "requires_agreement": False,
+                    "commercial_use": True
+                }
+            },
+
+            "omnigen": {
+                "repo_id": "Shitao/OmniGen-v1-diffusers",
+                "model_type": "generic",
+                "variant": "fp16",
+                "parameters": {
+                    "pipeline_class": "OmniGenPipeline",
+                    "num_inference_steps": 50,
+                    "guidance_scale": 2.5,
+                    "torch_dtype": "bfloat16",
+                    "enable_cpu_offload": True,
+                    "supports_negative_prompt": False
+                },
+                "hardware_requirements": {
+                    "min_vram_gb": 12,
+                    "recommended_vram_gb": 18,
+                    "min_ram_gb": 16,
+                    "recommended_ram_gb": 32,
+                    "disk_space_gb": 10,
+                    "supported_devices": ["CUDA"],
+                    "performance_notes": "BAAI 3.8B unified model. Text-to-image, editing, subject-driven generation without extra plugins."
+                },
+                "license_info": {
+                    "type": "MIT",
+                    "requires_agreement": False,
+                    "commercial_use": True
                 }
             }
         }

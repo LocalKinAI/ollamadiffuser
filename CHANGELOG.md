@@ -5,6 +5,164 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-02-03
+
+### 🏗️ Architecture Overhaul
+
+#### Strategy Pattern Engine
+- **Refactored InferenceEngine**: Replaced 1400+ line monolithic class with a ~220 line facade delegating to per-model strategy classes
+- **8 Strategy Classes**: `SD15Strategy`, `SDXLStrategy`, `FluxStrategy`, `SD3Strategy`, `ControlNetStrategy`, `VideoStrategy`, `HiDreamStrategy`, `GGUFStrategy`
+- **Abstract Base Class**: `InferenceStrategy` in `core/inference/base.py` with shared loading, LoRA, seed, and error handling logic
+- **Unified Safety Checker**: Replaced 5+ monkey-patch approaches with a single `SAFETY_DISABLED_KWARGS` dict passed to `from_pretrained`
+
+#### CLI Modularization
+- **Split CLI**: Broke 1300+ line `cli/main.py` into 4 focused modules (~139 line router)
+- **model_commands.py**: pull, run, list, show, check, rm, ps, load, unload, serve, stop
+- **lora_commands.py**: LoRA pull, load, unload, rm, ps, list, show
+- **registry_commands.py**: Registry list, add, remove, reload, import-config, export, check-gguf
+
+#### Duplicate Code Removal
+- **Removed `core/models/registry.py`**: Eliminated duplicate model registry (kept `core/config/model_registry.py`)
+- **Removed dead files**: `constants.py`, `helpers.py` from old engine architecture
+
+### 🚀 New Features
+
+#### Image-to-Image Generation
+- **img2img API endpoint**: `POST /api/generate/img2img` with strength control
+- **Inpainting API endpoint**: `POST /api/generate/inpaint` with mask support
+- **SD1.5 img2img/inpainting**: Via `StableDiffusionImg2ImgPipeline` and `StableDiffusionInpaintPipeline`
+- **SDXL img2img/inpainting**: Via `StableDiffusionXLImg2ImgPipeline` and `StableDiffusionXLInpaintPipeline`
+- **Web UI img2img**: New collapsible img2img section with input image preview
+
+#### Seed Support
+- **Random seeds by default**: Replaced hardcoded `seed=42` with `random.randint(0, 2**32 - 1)`
+- **Reproducible generation**: Pass explicit `seed` parameter to any generation endpoint
+- **Web UI seed field**: Optional seed input with "Random" placeholder
+- **API seed parameter**: `seed` field in `GenerateRequest` model
+
+#### Async API
+- **Non-blocking generation**: All GPU-bound operations wrapped in `asyncio.to_thread()`
+- **Async model loading**: `/api/models/load` and `/api/models/pull` are non-blocking
+- **Web UI async**: Generate and load operations in thread pool
+
+### 🌐 21 New Models
+
+#### GenericPipelineStrategy
+- **New strategy class**: Dynamically loads any `diffusers` pipeline class via `model_config.parameters["pipeline_class"]`, enabling new model types without writing new strategy code
+
+#### Tier 1: Classic Models (existing strategies)
+- **Stable Diffusion 3.5 Large**: `stabilityai/stable-diffusion-3.5-large` (sd3, 28 steps)
+- **Stable Diffusion 3.5 Large Turbo**: `stabilityai/stable-diffusion-3.5-large-turbo` (sd3, 4 steps, guidance=0.0)
+- **RealVisXL V4**: `SG161222/RealVisXL_V4.0` (sdxl, photorealistic finetune)
+- **DreamShaper**: `Lykon/DreamShaper` (sd15, popular community model)
+- **Realistic Vision V6**: `SG161222/Realistic_Vision_V6.0_B1_noVAE` (sd15, portrait specialist)
+- **SDXL Turbo**: `stabilityai/sdxl-turbo` (sdxl, single-step inference)
+
+#### Tier 2: Scheduler Override
+- **SDXL Lightning 4-Step**: `ByteDance/SDXL-Lightning` (sdxl, EulerDiscreteScheduler with trailing timestep spacing)
+- **SDXLStrategy scheduler override**: Reads `scheduler_class` and `scheduler_kwargs` from model parameters to configure custom schedulers
+
+#### Tier 3: FLUX Pipeline Variants
+- **FLUX.1 Fill**: `black-forest-labs/FLUX.1-Fill-dev` (FluxFillPipeline, inpainting/outpainting)
+- **FLUX.1 Canny**: `black-forest-labs/FLUX.1-Canny-dev` (FluxControlPipeline, edge control)
+- **FLUX.1 Depth**: `black-forest-labs/FLUX.1-Depth-dev` (FluxControlPipeline, depth control)
+- **FluxStrategy dynamic pipeline**: Reads `pipeline_class` from parameters, defaults to `FluxPipeline` for backward compatibility
+
+#### Tier 4: Next-Generation Models (GenericPipelineStrategy)
+- **FLUX.2 Dev**: `black-forest-labs/FLUX.2-dev` (32B params, Flux2Pipeline)
+- **FLUX.2 Klein 4B**: `black-forest-labs/FLUX.2-klein-4B` (4B params, Apache 2.0, Flux2KleinPipeline)
+- **Z-Image Turbo**: `Tongyi-MAI/Z-Image-Turbo` (Alibaba 6B, 8-step turbo, bilingual CN/EN)
+- **SANA 1.5**: `Efficient-Large-Model/SANA1.5_1.6B_1024px_diffusers` (NVIDIA 1.6B, very efficient)
+- **CogView4**: `THUDM/CogView4-6B` (Zhipu AI 6B, GLM-4 encoder, bilingual CN/EN)
+- **Kolors**: `Kwai-Kolors/Kolors-diffusers` (Kuaishou 8.6B, ChatGLM3, bilingual CN/EN)
+- **Hunyuan-DiT**: `Tencent-Hunyuan/HunyuanDiT-v1.2-Diffusers` (Tencent 1.5B, dual text encoders)
+- **Lumina 2.0**: `Alpha-VLLM/Lumina-Image-2.0` (2B, unified text+image tokens)
+- **PixArt-Sigma**: `PixArt-alpha/PixArt-Sigma-XL-2-1024-MS` (0.6B, <8GB VRAM, 4K capable)
+- **AuraFlow**: `fal/AuraFlow-v0.3` (6.8B, largest Apache 2.0 text-to-image model)
+- **OmniGen**: `Shitao/OmniGen-v1-diffusers` (BAAI 3.8B, unified generation, no negative prompt)
+
+### 🔌 OpenClaw & MCP Integration
+- **MCP Server**: New `ollamadiffuser mcp` command (or `ollamadiffuser-mcp` entry point) starts a Model Context Protocol server with 4 tools: `generate_image`, `list_models`, `load_model`, `get_status` -- works with OpenClaw, Claude Code, Cursor, and any MCP client
+- **OpenClaw AgentSkill**: `integrations/openclaw/SKILL.md` provides a ready-to-use skill for OpenClaw with full REST API instructions for model management and image generation
+- **Base64 JSON response**: New `response_format=b64_json` option on `POST /api/generate` returns `{"image": "<base64>", "format": "png", "width": w, "height": h}` -- essential for AI agent and messaging platform integration
+- **Optional dependency**: `pip install "ollamadiffuser[mcp]"` or `pip install "ollamadiffuser[openclaw]"` adds MCP support; included in `[full]`
+
+### 🍎 Apple Silicon / Mac Mini Support
+- **`ollamadiffuser recommend` command**: New CLI command that detects hardware (CUDA/MPS/CPU, RAM/VRAM) and recommends models that fit, with `--commercial-only` and `--device` flags
+- **MPS dtype safety**: GenericPipelineStrategy now falls back from bfloat16 to float16 on MPS devices, preventing Metal compatibility issues
+- **GGUF Metal acceleration**: All 11 GGUF models now list MPS in supported_devices (Metal acceleration via `CMAKE_ARGS="-DSD_METAL=ON"`)
+- **Registry MPS updates**: Added MPS support to `cogview4` and `lumina-2` model entries
+- **Smart quick-start**: `recommend` command suggests the best standalone model for your hardware (e.g. `pixart-sigma` for 16GB Mac)
+
+### 🔒 Security Fixes
+- **Path traversal prevention**: Removed `control_image_path` from `/api/generate` endpoint (use dedicated `/api/generate/controlnet` with file upload instead)
+- **CORS hardening**: Dropped `allow_credentials=True` from CORS middleware
+- **Error detail leakage**: Replaced raw exception messages in HTTP responses with generic error messages, log full details server-side with `exc_info=True`
+
+### 🐛 Bug Fixes (v2.0.0)
+- **HuggingFace Hub path check**: Fixed `Path.exists()` returning False for Hub IDs like `"black-forest-labs/FLUX.1-schnell"` by only checking local paths
+- **Device placement conflict**: Fixed `_move_to_device()` and `enable_model_cpu_offload()` contradicting each other in FluxStrategy, HiDreamStrategy, and VideoStrategy (now mutually exclusive)
+- **Falsy zero evaluation**: Fixed `num_inference_steps=0` being treated as falsy across all 8 strategies (now uses `is not None` check)
+- **SD1.5 silent guidance clamping**: Removed silent `guidance > 7.0` clamp; kept MPS clamp with logging
+- **SD1.5 silent dimension override**: Replaced silent 1024->512 dimension override with logged warning for dimensions > 768
+- **VideoStrategy hardcoded dimensions**: Fixed hardcoded `width=512, height=512` to use user-specified values
+- **Error image truncation**: Added `prompt[:50] + "..."` truncation in `_create_error_image` for long prompts
+- **GGUF duplicate seed logic**: Moved `import random` to module level
+- **Web UI LoRA download**: Fixed `final_name` reference error in `pull_lora_ui` by initializing before try block
+- **Hardcoded seed=42**: Now random by default across all strategies
+- **Safety checker monkey-patches**: Unified into clean `SAFETY_DISABLED_KWARGS`
+- **Missing CLI commands**: Added `serve` and `stop` to `model_commands.py`
+- **Sync API blocking**: All endpoints now properly async
+
+### 🧪 Test Suite
+- **82 tests across 7 modules**: All passing
+- **test_settings.py**: ModelConfig, ServerConfig, Settings save/load
+- **test_model_registry.py**: Default models, get/add/remove, model names, 21 new model validation (types, pipeline classes, scheduler config, hardware requirements, MPS size constraints)
+- **test_engine.py**: Strategy factory (all 9 types including generic), device detection, engine lifecycle, GenericPipelineStrategy (dynamic pipeline loading, missing/invalid pipeline class, CPU offload), base strategy methods, safety kwargs
+- **test_api_server.py**: Health, root, models, generate endpoints via TestClient
+- **test_mps_support.py**: GenericPipelineStrategy MPS dtype fallback (6 tests), registry MPS device assignments (2 tests), recommend command classification and CLI (7 tests)
+- **test_api_base64.py**: Base64 JSON response format (default PNG, b64_json, null format, no-model error)
+- **test_mcp_server.py**: MCP server creation, tool registration, list_models, get_status, load_model, generate_image error handling (8 tests, skip gracefully without mcp package)
+
+### 📦 Dependencies Updated
+- **torch**: `>=2.4.0` (was `>=2.0.0`)
+- **diffusers**: `>=0.34.0` (was `>=0.26.0`)
+- **accelerate**: `>=1.0.0` (was `>=0.20.0`)
+- **transformers**: `>=4.44.0` (was `>=4.30.0`)
+- **numpy**: `>=1.26.0` (was `>=1.24.0`)
+- **Pillow**: `>=10.0.0` (was `>=9.5.0`)
+- **GGUF optional**: Moved `stable-diffusion-cpp-python` and `gguf` to `[gguf]` extra
+- **Dev dependencies**: Added `pytest`, `pytest-cov`, `pytest-asyncio`, `httpx`, `mypy`
+
+### 🌐 Web UI Updates
+- **Version display**: Header shows v2.0.0
+- **Seed field**: Optional seed input for reproducible results
+- **img2img tab**: Collapsible section with strength, steps, guidance, and seed controls
+- **img2img results**: Side-by-side input/output image display
+- **Async operations**: Model loading and generation run in thread pool
+
+### 🐛 Bug Fixes
+- **Hardcoded seed=42**: Now random by default across all strategies
+- **Safety checker monkey-patches**: Unified into clean `SAFETY_DISABLED_KWARGS`
+- **Missing CLI commands**: Added `serve` and `stop` to `model_commands.py`
+- **Sync API blocking**: All endpoints now properly async
+
+### ⚠️ Breaking Changes
+- **Minimum Python**: 3.10+ (was 3.8+)
+- **Dependency versions**: Major bumps to torch, diffusers, accelerate
+- **GGUF install**: Now requires `pip install "ollamadiffuser[gguf]"` instead of separate packages
+- **Internal API**: `InferenceEngine` internals restructured (public API unchanged)
+
+### 🔄 Migration Guide
+For users upgrading from v1.x:
+
+1. **Update dependencies**: `pip install --upgrade ollamadiffuser`
+2. **GGUF users**: `pip install "ollamadiffuser[gguf]"` (separate install no longer works)
+3. **API consumers**: No changes needed -- all endpoints remain compatible
+4. **Python API users**: `engine.generate_image()` API unchanged, now supports `seed`, `image`, `mask_image`, and `strength` parameters
+
+---
+
 ## [1.2.0] - 2025-06-02
 
 ### 🚀 Major Features Added

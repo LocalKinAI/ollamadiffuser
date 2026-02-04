@@ -11,95 +11,70 @@ ollamadiffuser is now proudly part of LocalKinAI, an open-source ecosystem for b
 
 ## Local AI Image Generation with OllamaDiffuser
 
-**OllamaDiffuser** simplifies local deployment of **Stable Diffusion**, **FLUX.1**, and other AI image generation models. An intuitive **local SD** tool inspired by **Ollama's** simplicity - perfect for **local diffuser** workflows with CLI, web UI, and LoRA support.
+**OllamaDiffuser** simplifies local deployment of **Stable Diffusion**, **FLUX**, **CogView4**, **Kolors**, **SANA**, **PixArt-Sigma**, and 40+ other AI image generation models. An intuitive **local SD** tool inspired by **Ollama's** simplicity - perfect for **local diffuser** workflows with CLI, web UI, and LoRA support.
 
 🌐 **Website**: [ollamadiffuser.com](https://www.ollamadiffuser.com/) | 📦 **PyPI**: [pypi.org/project/ollamadiffuser](https://pypi.org/project/ollamadiffuser/)
 
+> **Upgrading from v1.x?** v2.0 is a major rewrite requiring **Python 3.10+**. Run `pip install --upgrade "ollamadiffuser[full]"` and see the [Migration Guide](#-migration-guide) below.
+
 ---
 
-## 🔑 Hugging Face Authentication
+## 🚀 Quick Start (v2.0)
 
-**Do you need a Hugging Face token?** It depends on which models you want to use!
-
-### 🟢 Models that DON'T require a token:
-- **FLUX.1-schnell** - Apache 2.0 license, ready to use ✅
-- **Stable Diffusion 1.5** - Basic model, no authentication needed ✅
-- **Most ControlNet models** - Generally public access ✅
-
-### 🟡 Models that DO require a token:
-- **FLUX.1-dev** - Requires HF token and license agreement ⚠️
-- **Stable Diffusion 3.5** - Requires HF token and license agreement ⚠️
-- **Some premium LoRAs** - Gated models from Hugging Face ⚠️
-
-### 🚀 Quick Setup
-
-**For basic usage** (no token needed):
+**For Mac/PC Users:**
 ```bash
-# These work immediately without any setup:
-ollamadiffuser pull flux.1-schnell
-ollamadiffuser pull stable-diffusion-1.5
+pip install "ollamadiffuser[full]"
+ollamadiffuser recommend  # Find which models fit your GPU
 ```
 
-**For advanced models** (token required):
+**For OpenClaw/Agent Users:**
 ```bash
-# 1. Set your token
-export HF_TOKEN=your_token_here
-
-# 2. Now you can access gated models
-ollamadiffuser pull flux.1-dev
-ollamadiffuser pull stable-diffusion-3.5-medium
+pip install "ollamadiffuser[mcp]"
+ollamadiffuser mcp        # Starts the MCP server
 ```
 
-### 🔧 How to get a Hugging Face token:
+**For Low-VRAM / Budget GPU Users:**
+```bash
+pip install "ollamadiffuser[gguf]"
+ollamadiffuser pull flux.1-dev-gguf-q4ks  # Only 6GB VRAM needed
+ollamadiffuser run flux.1-dev-gguf-q4ks
+```
 
-1. **Create account**: Visit [huggingface.co](https://huggingface.co) and sign up
-2. **Generate token**: Go to Settings → Access Tokens → Create new token
-3. **Accept licenses**: Visit the model pages and accept license agreements:
-   - [FLUX.1-dev](https://huggingface.co/black-forest-labs/FLUX.1-dev)
-   - [Stable Diffusion 3.5](https://huggingface.co/stabilityai/stable-diffusion-3.5-medium)
-4. **Set environment variable**:
-   ```bash
-   # Temporary (current session)
-   export HF_TOKEN=your_token_here
-   
-   # Permanent (add to ~/.bashrc or ~/.zshrc)
-   echo 'export HF_TOKEN=your_token_here' >> ~/.bashrc
-   ```
-
-### 💡 Pro Tips:
-- **Start simple**: Begin with FLUX.1-schnell (no token required, commercial use OK)
-- **Token scope**: Use "read" permissions for downloading models
-- **Privacy**: Your token stays local - never shared with OllamaDiffuser servers
-- **Troubleshooting**: If downloads fail, verify your token and model access permissions
+Most models work **without any token** -- just install and go. See [Hugging Face Authentication](#-hugging-face-authentication) when you want gated models like FLUX.1-dev or SD 3.5.
 
 ---
 
 ## ✨ Features
 
-- **🚀 Fast Startup**: Instant application launch with lazy loading architecture
+- **🏗️ Strategy Architecture**: Clean per-model strategy pattern (SD1.5, SDXL, FLUX, SD3, ControlNet, Video, HiDream, GGUF, Generic)
+- **🌐 40+ Models**: FLUX.2, SD 3.5, SDXL Lightning, CogView4, Kolors, SANA, PixArt-Sigma, and more
+- **🔌 Generic Pipeline**: Add new diffusers models via registry config alone -- no code changes needed
+- **🖼️ img2img & Inpainting**: Image-to-image and inpainting support across SD1.5, SDXL, and the API/Web UI
+- **⚡ Async API**: Non-blocking FastAPI server using `asyncio.to_thread` for GPU operations
+- **🎲 Random Seeds**: Reproducible generation with explicit seeds, random by default
 - **🎛️ ControlNet Support**: Precise image generation control with 10+ control types
 - **🔄 LoRA Integration**: Dynamic LoRA loading and management
-- **📦 GGUF Support**: Memory-efficient quantized models (3GB VRAM minimum!)
+- **🔌 MCP & OpenClaw**: Model Context Protocol server for AI assistant integration (OpenClaw, Claude Code, Cursor)
+- **🍎 Apple Silicon**: MPS dtype safety, GGUF Metal acceleration, `ollamadiffuser recommend` for hardware-aware model suggestions
+- **📦 GGUF Support**: Memory-efficient quantized models (3GB VRAM minimum!) with CUDA and Metal acceleration
 - **🌐 Multiple Interfaces**: CLI, Python API, Web UI, and REST API
 - **📦 Model Management**: Easy installation and switching between models
 - **⚡ Performance Optimized**: Memory-efficient with GPU acceleration
-- **🎨 Professional Results**: High-quality image generation with fine-tuned control
-
-## 🚀 Quick Start
+- **🧪 Test Suite**: 82 tests across settings, registry, engine, API, MPS, and MCP
 
 ### Option 1: Install from PyPI (Recommended)
 ```bash
 # Install from PyPI
 pip install ollamadiffuser
 
-# Pull and run a model (4-command setup)
+# Pull and run a model
 ollamadiffuser pull flux.1-schnell
 ollamadiffuser run flux.1-schnell
 
-# Generate via API
+# Generate via API (seed is optional for reproducibility)
 curl -X POST http://localhost:8000/api/generate \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "A beautiful sunset"}' \
+  -d '{"prompt": "A beautiful sunset", "seed": 12345}' \
   --output image.png
 ```
 
@@ -122,12 +97,28 @@ This ensures you get:
 ### GGUF Quick Start (Low VRAM)
 ```bash
 # For systems with limited VRAM (3GB+)
-pip install ollamadiffuser stable-diffusion-cpp-python gguf
+pip install "ollamadiffuser[gguf]"
 
 # Download memory-efficient GGUF model
 ollamadiffuser pull flux.1-dev-gguf-q4ks
 
 # Generate with reduced memory usage
+ollamadiffuser run flux.1-dev-gguf-q4ks
+```
+
+### Apple Silicon Quick Start (Mac Mini / MacBook)
+```bash
+# See which models fit your Mac
+ollamadiffuser recommend
+
+# Best lightweight model (0.6B, <6GB)
+ollamadiffuser pull pixart-sigma
+ollamadiffuser run pixart-sigma
+
+# GGUF with Metal acceleration (6GB, great quality)
+pip install "ollamadiffuser[gguf]"
+CMAKE_ARGS="-DSD_METAL=ON" pip install stable-diffusion-cpp-python
+ollamadiffuser pull flux.1-dev-gguf-q4ks
 ollamadiffuser run flux.1-dev-gguf-q4ks
 ```
 
@@ -180,21 +171,92 @@ curl -X POST http://localhost:8000/api/generate/controlnet \
 
 ---
 
+## 🔑 Hugging Face Authentication
+
+**Do you need a Hugging Face token?** It depends on which models you want to use!
+
+**Models that DON'T require a token** -- ready to use right away:
+- FLUX.1-schnell, Stable Diffusion 1.5, DreamShaper, PixArt-Sigma, SANA 1.5, most ControlNet models
+
+**Models that DO require a token:**
+- FLUX.1-dev, Stable Diffusion 3.5, some premium LoRAs
+
+**Setup** (only needed for gated models):
+```bash
+# 1. Create account at https://huggingface.co and generate an access token
+# 2. Accept license on the model page (e.g. FLUX.1-dev, SD 3.5)
+# 3. Set your token
+export HF_TOKEN=your_token_here
+
+# 4. Now you can access gated models
+ollamadiffuser pull flux.1-dev
+ollamadiffuser pull stable-diffusion-3.5-medium
+```
+
+> **Tips:** Use "read" permissions for the token. Your token stays local -- never shared with OllamaDiffuser servers. Add `export HF_TOKEN=...` to `~/.bashrc` or `~/.zshrc` to make it permanent.
+
+---
+
 ## 🎯 Supported Models
 
-Choose from a variety of state-of-the-art image generation models:
+Choose from 40+ models spanning every major architecture:
 
-| Model | License | Quality | Speed | Commercial Use | VRAM |
-|-------|---------|---------|-------|----------------|------|
-| **FLUX.1-schnell** | Apache 2.0 | High | **4 steps** (12x faster) | ✅ Commercial OK | 20GB+ |
-| **FLUX.1-dev** | Non-commercial | High | 50 steps | ❌ Non-commercial | 20GB+ |
-| **FLUX.1-dev-gguf** | Non-commercial | High | 4 steps | ❌ Non-commercial | **3-16GB** |
-| **Stable Diffusion 3.5** | CreativeML | Medium | 28 steps | ⚠️ Check License | 12GB+ |
-| **Stable Diffusion 1.5** | CreativeML | Fast | Lightweight | ⚠️ Check License | 6GB+ |
+### Core Models
+
+| Model | Type | Steps | VRAM | Commercial | License |
+|-------|------|-------|------|------------|---------|
+| `flux.1-schnell` | flux | 4 | 16GB+ | ✅ | Apache 2.0 |
+| `flux.1-dev` | flux | 20 | 20GB+ | ❌ | Non-commercial |
+| `stable-diffusion-3.5-medium` | sd3 | 28 | 8GB+ | ⚠️ | Stability AI |
+| `stable-diffusion-3.5-large` | sd3 | 28 | 12GB+ | ⚠️ | Stability AI |
+| `stable-diffusion-3.5-large-turbo` | sd3 | 4 | 12GB+ | ⚠️ | Stability AI |
+| `stable-diffusion-xl-base` | sdxl | 50 | 6GB+ | ⚠️ | CreativeML |
+| `stable-diffusion-1.5` | sd15 | 50 | 4GB+ | ⚠️ | CreativeML |
+
+### Next-Generation Models
+
+| Model | Origin | Params | Steps | VRAM | Commercial | License |
+|-------|--------|--------|-------|------|------------|---------|
+| `flux.2-dev` | Black Forest Labs | 32B | 28 | 14GB+ | ❌ | Non-commercial |
+| `flux.2-klein-4b` | Black Forest Labs | 4B | 28 | 10GB+ | ✅ | Apache 2.0 |
+| `z-image-turbo` | Alibaba (Tongyi) | 6B | 8 | 10GB+ | ✅ | Apache 2.0 |
+| `sana-1.5` | NVIDIA | 1.6B | 20 | 8GB+ | ✅ | Apache 2.0 |
+| `cogview4` | Zhipu AI | 6B | 50 | 12GB+ | ✅ | Apache 2.0 |
+| `kolors` | Kuaishou | 8.6B | 50 | 8GB+ | ✅ | Kolors License |
+| `hunyuan-dit` | Tencent | 1.5B | 50 | 6GB+ | ✅ | Tencent Community |
+| `lumina-2` | Alpha-VLLM | 2B | 30 | 8GB+ | ✅ | Apache 2.0 |
+| `pixart-sigma` | PixArt | 0.6B | 20 | 6GB+ | ✅ | Open |
+| `auraflow` | Fal | 6.8B | 50 | 12GB+ | ✅ | Apache 2.0 |
+| `omnigen` | BAAI | 3.8B | 50 | 12GB+ | ✅ | MIT |
+
+### Fast / Turbo Models
+
+| Model | Steps | VRAM | Notes |
+|-------|-------|------|-------|
+| `sdxl-turbo` | 1 | 6GB+ | Single-step distilled SDXL |
+| `sdxl-lightning-4step` | 4 | 6GB+ | ByteDance, custom scheduler |
+| `stable-diffusion-3.5-large-turbo` | 4 | 12GB+ | Distilled SD 3.5 Large |
+| `z-image-turbo` | 8 | 10GB+ | Alibaba 6B turbo |
+
+### Community Fine-Tunes
+
+| Model | Base | Notes |
+|-------|------|-------|
+| `realvisxl-v4` | SDXL | Photorealistic, very popular |
+| `dreamshaper` | SD 1.5 | Versatile artistic model |
+| `realistic-vision-v6` | SD 1.5 | Portrait specialist |
+
+### FLUX Pipeline Variants
+
+| Model | Pipeline | Use Case |
+|-------|----------|----------|
+| `flux.1-fill-dev` | FluxFillPipeline | Inpainting / outpainting |
+| `flux.1-canny-dev` | FluxControlPipeline | Canny edge control |
+| `flux.1-depth-dev` | FluxControlPipeline | Depth map control |
 
 ### 💾 GGUF Models - Reduced Memory Requirements
 
-**NEW**: GGUF quantized models enable running FLUX.1-dev on budget hardware!
+GGUF quantized models enable running FLUX.1-dev on budget hardware:
 
 | GGUF Variant | VRAM | Quality | Best For |
 |--------------|------|---------|----------|
@@ -204,11 +266,6 @@ Choose from a variety of state-of-the-art image generation models:
 | `flux.1-dev-gguf-q6k` | 10GB | ⭐⭐⭐⭐⭐ | RTX 3080/4070+ |
 
 📖 **[Complete GGUF Guide](GGUF_GUIDE.md)** - Hardware recommendations, installation, and optimization tips
-
-### Why Choose FLUX.1-schnell?
-- **Apache 2.0 license** - Perfect for commercial use
-- **4-step generation** - Lightning fast results  
-- **Commercial OK** - Use in your business
 
 ---
 
@@ -301,17 +358,74 @@ Features:
 ```bash
 # Start API server
 ollamadiffuser --mode api
-
 ollamadiffuser load stable-diffusion-1.5
 
-# Generate image
+# Text-to-image
 curl -X POST http://localhost:8000/api/generate \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "a beautiful landscape", "width": 1024, "height": 1024}'
+  -d '{"prompt": "a beautiful landscape", "width": 1024, "height": 1024, "seed": 42}'
 
-# API document
-http://localhost:8000/docs
+# Image-to-image
+curl -X POST http://localhost:8000/api/generate/img2img \
+  -F "prompt=oil painting style" \
+  -F "strength=0.75" \
+  -F "image=@input.png" \
+  --output result.png
+
+# Inpainting
+curl -X POST http://localhost:8000/api/generate/inpaint \
+  -F "prompt=a red car" \
+  -F "image=@photo.png" \
+  -F "mask=@mask.png" \
+  --output inpainted.png
+
+# API docs: http://localhost:8000/docs
 ```
+
+### MCP Server (AI Assistant Integration)
+
+OllamaDiffuser includes a [Model Context Protocol](https://modelcontextprotocol.io/) server for integration with AI assistants like OpenClaw, Claude Code, and Cursor.
+
+```bash
+# Install MCP support
+pip install "ollamadiffuser[mcp]"
+
+# Start MCP server (stdio transport)
+ollamadiffuser mcp
+```
+
+**MCP client configuration** (e.g. `claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "ollamadiffuser": {
+      "command": "ollamadiffuser-mcp"
+    }
+  }
+}
+```
+
+**Available MCP tools:**
+- `generate_image` -- Generate images from text prompts (auto-loads model)
+- `list_models` -- List available and installed models
+- `load_model` -- Load a model into memory
+- `get_status` -- Check device, loaded model, and system status
+
+### OpenClaw AgentSkill
+
+An [OpenClaw](https://github.com/openclaw/openclaw) skill is included at `integrations/openclaw/SKILL.md`. It uses the REST API with `response_format=b64_json` for agent-friendly base64 image responses. Copy the skill directory to your OpenClaw skills folder or publish to ClawHub.
+
+### Base64 JSON API Response
+
+For AI agents and messaging platforms, use `response_format=b64_json` to get images as JSON:
+
+```bash
+curl -X POST http://localhost:8000/api/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "a sunset over mountains", "response_format": "b64_json"}'
+```
+
+Response: `{"image": "<base64 PNG>", "format": "png", "width": 1024, "height": 1024}`
 
 ### Python API
 ```python
@@ -321,30 +435,59 @@ from ollamadiffuser.core.models.manager import model_manager
 success = model_manager.load_model("stable-diffusion-1.5")
 if success:
     engine = model_manager.loaded_model
-    
-    # Generate image
+
+    # Text-to-image (seed is optional; omit for random)
     image = engine.generate_image(
         prompt="a beautiful sunset",
         width=1024,
-        height=1024
+        height=1024,
+        seed=42,
     )
     image.save("output.jpg")
+
+    # Image-to-image
+    from PIL import Image
+    input_img = Image.open("photo.jpg")
+    result = engine.generate_image(
+        prompt="watercolor painting",
+        image=input_img,
+        strength=0.7,
+    )
+    result.save("img2img_output.jpg")
 else:
     print("Failed to load model")
 ```
 
-## 📦 Supported Models
+## 📦 Model Ecosystem
 
 ### Base Models
-- **Stable Diffusion 1.5**: Classic, reliable, fast
-- **Stable Diffusion XL**: High-resolution, detailed
-- **Stable Diffusion 3**: Latest architecture
-- **FLUX.1**: State-of-the-art quality
+- **Stable Diffusion 1.5**: Classic, reliable, fast (img2img + inpainting)
+- **Stable Diffusion XL**: High-resolution, detailed (img2img + inpainting, scheduler overrides)
+- **Stable Diffusion 3.5**: Medium, Large, and Large Turbo variants
+- **FLUX.1**: schnell, dev, Fill, Canny, Depth pipeline variants
+- **HiDream**: Multi-prompt generation with bfloat16
+- **AnimateDiff**: Video/animation generation
+
+### Next-Generation Models
+- **FLUX.2**: 32B dev and 4B Klein variants from Black Forest Labs
+- **Chinese Models**: CogView4 (Zhipu), Kolors (Kuaishou), Hunyuan-DiT (Tencent), Z-Image (Alibaba)
+- **Efficient Models**: SANA 1.5 (1.6B), PixArt-Sigma (0.6B) -- high quality at low VRAM
+- **Open Models**: AuraFlow (6.8B, Apache 2.0), OmniGen (3.8B, MIT), Lumina 2.0 (2B, Apache 2.0)
+
+### Fast / Turbo Models
+- **SDXL Turbo**: Single-step inference from Stability AI
+- **SDXL Lightning**: 4-step with custom scheduler from ByteDance
+- **Z-Image Turbo**: 8-step turbo from Alibaba
+
+### Community Fine-Tunes
+- **RealVisXL V4**: Photorealistic SDXL, very popular
+- **DreamShaper**: Versatile artistic SD 1.5 model
+- **Realistic Vision V6**: Portrait specialist
 
 ### GGUF Quantized Models
 - **FLUX.1-dev GGUF**: 7 quantization levels (3GB-16GB VRAM)
 - **Memory Efficient**: Run high-quality models on budget hardware
-- **Same API**: Works seamlessly with existing commands
+- **Optional Install**: `pip install "ollamadiffuser[gguf]"`
 
 ### ControlNet Models
 - **SD 1.5 ControlNet**: 4 control types (canny, depth, openpose, scribble)
@@ -356,14 +499,32 @@ else:
 - **Dynamic Loading**: Load/unload without model restart
 - **Strength Control**: Adjustable influence (0.1-2.0)
 
-## ⚙️ Configuration
+## ⚙️ Architecture
 
-### Model Configuration
+### Strategy Pattern Engine
+Each model type has a dedicated strategy class handling loading and generation:
+
+```
+InferenceEngine (facade)
+  -> SD15Strategy            (512x512, float32 on MPS, img2img, inpainting)
+  -> SDXLStrategy            (1024x1024, img2img, inpainting, scheduler overrides)
+  -> FluxStrategy            (schnell/dev/Fill/Canny/Depth, dynamic pipeline class)
+  -> SD3Strategy             (1024x1024, 28 steps, guidance=3.5)
+  -> ControlNetStrategy      (SD15 + SDXL base models)
+  -> VideoStrategy           (AnimateDiff, 16 frames)
+  -> HiDreamStrategy         (bfloat16, multi-prompt)
+  -> GGUFStrategy            (quantized via stable-diffusion-cpp)
+  -> GenericPipelineStrategy (any diffusers pipeline via config)
+```
+
+The `GenericPipelineStrategy` dynamically loads any `diffusers` pipeline class specified in the model registry, so new models can be added with zero code changes.
+
+### Configuration
 Models are automatically configured with optimal settings:
 - **Memory Optimization**: Attention slicing, CPU offloading
 - **Device Detection**: Automatic CUDA/MPS/CPU selection
-- **Precision Handling**: FP16/BF16 support for efficiency
-- **Safety Features**: NSFW filter bypass for creative freedom
+- **Precision Handling**: FP16/BF16 per model type
+- **Safety Disabled**: Unified `SAFETY_DISABLED_KWARGS` (no monkey-patching)
 
 ## 🔧 Advanced Usage
 
@@ -438,7 +599,7 @@ with open("control.jpg", "rb") as f:
 ### Minimum Requirements
 - **RAM**: 8GB system RAM
 - **Storage**: 10GB free space
-- **Python**: 3.8+
+- **Python**: 3.10+
 
 ### Recommended Hardware
 
@@ -447,6 +608,12 @@ with open("control.jpg", "rb") as f:
 - **RAM**: 16GB+ system RAM
 - **Storage**: SSD with 50GB+ free space
 
+#### For Apple Silicon (Mac Mini / MacBook)
+- **16GB unified memory**: PixArt-Sigma, SANA 1.5, DreamShaper, SD 1.5/XL, GGUF q2k-q5ks
+- **24GB+ unified memory**: CogView4, Kolors, Lumina 2.0, GGUF q6k-q8
+- **GGUF with Metal**: Install with `CMAKE_ARGS="-DSD_METAL=ON"` for GPU acceleration
+- Run `ollamadiffuser recommend` to see what fits your hardware
+
 #### For GGUF Models (Memory Efficient)
 - **GPU**: 3GB+ VRAM (or CPU only)
 - **RAM**: 8GB+ system RAM (16GB+ for CPU inference)
@@ -454,7 +621,7 @@ with open("control.jpg", "rb") as f:
 
 ### Supported Platforms
 - **CUDA**: NVIDIA GPUs (recommended)
-- **MPS**: Apple Silicon (M1/M2/M3)
+- **MPS**: Apple Silicon (M1/M2/M3/M4) -- native support for 30+ models including GGUF
 - **CPU**: All platforms (slower but functional)
 
 ## 🔧 Troubleshooting
@@ -485,7 +652,7 @@ pip install 'ollamadiffuser[full]'
 #### GGUF Support Issues
 ```bash
 # Install GGUF dependencies
-pip install stable-diffusion-cpp-python gguf
+pip install "ollamadiffuser[gguf]"
 
 # Check GGUF support
 ollamadiffuser registry check-gguf
@@ -624,9 +791,21 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 
 - **Stability AI**: For Stable Diffusion models
-- **Black Forest Labs**: For FLUX.1 models
+- **Black Forest Labs**: For FLUX.1 and FLUX.2 models
+- **Alibaba (Tongyi-MAI)**: For Z-Image Turbo
+- **NVIDIA (Efficient-Large-Model)**: For SANA 1.5
+- **Zhipu AI (THUDM)**: For CogView4
+- **Kuaishou (Kwai-Kolors)**: For Kolors
+- **Tencent (Hunyuan)**: For Hunyuan-DiT
+- **Alpha-VLLM**: For Lumina 2.0
+- **PixArt-alpha**: For PixArt-Sigma
+- **Fal**: For AuraFlow
+- **BAAI (Shitao)**: For OmniGen
+- **ByteDance**: For SDXL Lightning
 - **city96**: For FLUX.1-dev GGUF quantizations
 - **Hugging Face**: For model hosting and diffusers library
+- **Anthropic**: For Model Context Protocol (MCP)
+- **OpenClaw**: For AI agent ecosystem integration
 - **ControlNet Team**: For ControlNet architecture
 - **Community**: For feedback and contributions
 

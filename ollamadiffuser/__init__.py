@@ -4,7 +4,7 @@ OllamaDiffuser - Local AI Image Generation with Ollama-style CLI
 A tool for managing and running Stable Diffusion, FLUX.1, and other AI image generation models locally.
 """
 
-__version__ = "1.2.3"
+__version__ = "2.0.0"
 __author__ = "OllamaDiffuser Team"
 __email__ = "ollamadiffuser@gmail.com"
 __description__ = "🎨 Local AI Image Generation with Ollama-style CLI for Stable Diffusion, FLUX.1, and LoRA support"
