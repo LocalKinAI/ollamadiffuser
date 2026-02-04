@@ -17,7 +17,7 @@ console = Console()
 
 @click.group()
 def registry():
-    """Manage model registry"""
+    """Manage model registry and show available models"""
     pass
 
 
