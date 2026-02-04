@@ -197,14 +197,13 @@ class TestGenericStrategy:
 
         assert result is False
 
-    def test_generic_strategy_cpu_offload(self):
+    def _load_generic_with_offload(self, device):
+        """Helper to load a GenericPipelineStrategy with CPU offload on the given device."""
         import sys
         from ollamadiffuser.core.inference.strategies.generic_strategy import GenericPipelineStrategy
 
         mock_pipeline_cls = MagicMock()
         mock_pipe_instance = MagicMock()
-        mock_pipe_instance.enable_model_cpu_offload = MagicMock()
-        mock_pipe_instance.enable_attention_slicing = MagicMock()
         mock_pipeline_cls.from_pretrained.return_value = mock_pipe_instance
 
         mock_diffusers = MagicMock()
@@ -224,17 +223,28 @@ class TestGenericStrategy:
         original = sys.modules.get("diffusers")
         sys.modules["diffusers"] = mock_diffusers
         try:
-            result = strategy.load(config, "cuda")
+            result = strategy.load(config, device)
         finally:
             if original is not None:
                 sys.modules["diffusers"] = original
             else:
                 sys.modules.pop("diffusers", None)
 
+        return result, mock_pipe_instance
+
+    def test_generic_strategy_cpu_offload_cuda(self):
+        result, mock_pipe = self._load_generic_with_offload("cuda")
         assert result is True
-        mock_pipe_instance.enable_model_cpu_offload.assert_called_once()
-        # Should NOT call .to() when offloading
-        mock_pipe_instance.to.assert_not_called()
+        # CUDA prefers sequential offload for lowest VRAM usage
+        mock_pipe.enable_sequential_cpu_offload.assert_called_once()
+        mock_pipe.to.assert_not_called()
+
+    def test_generic_strategy_cpu_offload_mps(self):
+        result, mock_pipe = self._load_generic_with_offload("mps")
+        assert result is True
+        # MPS prefers model-level offload (more effective on unified memory)
+        mock_pipe.enable_model_cpu_offload.assert_called_once()
+        mock_pipe.to.assert_not_called()
 
 
 class TestInferenceStrategyBase:

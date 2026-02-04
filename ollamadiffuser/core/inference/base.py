@@ -117,6 +117,12 @@ class InferenceStrategy(ABC):
         if hasattr(self.pipeline, "enable_attention_slicing"):
             self.pipeline.enable_attention_slicing()
             logger.info("Enabled attention slicing")
+        if hasattr(self.pipeline, "enable_vae_tiling"):
+            self.pipeline.enable_vae_tiling()
+            logger.info("Enabled VAE tiling")
+        if hasattr(self.pipeline, "enable_vae_slicing"):
+            self.pipeline.enable_vae_slicing()
+            logger.info("Enabled VAE slicing")
 
     def load_lora_runtime(
         self, repo_id: str, weight_name: str = None, scale: float = 1.0

@@ -61,7 +61,7 @@ class GenericPipelineStrategy(InferenceStrategy):
                 logger.info("Falling back from bfloat16 to float16 for MPS device compatibility")
                 dtype = torch.float16
 
-            load_kwargs = {"torch_dtype": dtype}
+            load_kwargs = {"torch_dtype": dtype, "low_cpu_mem_usage": True}
             if dtype in (torch.float16, torch.bfloat16):
                 load_kwargs["use_safetensors"] = True
 
@@ -77,12 +77,18 @@ class GenericPipelineStrategy(InferenceStrategy):
                 enable_offload = True
 
             if enable_offload and device in ("cuda", "mps"):
-                if hasattr(self.pipeline, "enable_sequential_cpu_offload"):
-                    # Sequential offload: moves individual layers, lowest memory usage
+                if device == "mps" and hasattr(self.pipeline, "enable_model_cpu_offload"):
+                    # MPS/unified memory: model-level offload is more effective than
+                    # sequential offload because it fully deallocates entire components
+                    # (T5 encoder, transformer, VAE) between stages, reducing peak
+                    # memory pressure on the MPS allocator.
+                    self.pipeline.enable_model_cpu_offload(device=device)
+                    logger.info(f"Enabled model CPU offloading on {device}")
+                elif hasattr(self.pipeline, "enable_sequential_cpu_offload"):
+                    # CUDA: sequential offload moves individual layers, lowest VRAM usage
                     self.pipeline.enable_sequential_cpu_offload(device=device)
                     logger.info(f"Enabled sequential CPU offloading on {device}")
                 elif hasattr(self.pipeline, "enable_model_cpu_offload"):
-                    # Model offload: moves whole components, moderate memory usage
                     self.pipeline.enable_model_cpu_offload(device=device)
                     logger.info(f"Enabled model CPU offloading on {device}")
                 else:
