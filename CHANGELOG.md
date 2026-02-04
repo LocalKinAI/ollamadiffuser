@@ -5,17 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.1] - 2026-02-04
-
-### Fixed
-- **Registry command visibility**: Made `ollamadiffuser registry` command visible in CLI help output (was previously hidden)
-
-### Changed
-- **README**: Added registry commands to CLI documentation
-
----
-
-## [2.0.0] - 2026-02-03
+## [2.0.0] - 2026-02-04
 
 ### 🏗️ Architecture Overhaul
 
@@ -26,10 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Unified Safety Checker**: Replaced 5+ monkey-patch approaches with a single `SAFETY_DISABLED_KWARGS` dict passed to `from_pretrained`
 
 #### CLI Modularization
-- **Split CLI**: Broke 1300+ line `cli/main.py` into 4 focused modules (~139 line router)
+- **Split CLI**: Broke 1300+ line `cli/main.py` into 5 focused modules (~139 line router)
 - **model_commands.py**: pull, run, list, show, check, rm, ps, load, unload, serve, stop
 - **lora_commands.py**: LoRA pull, load, unload, rm, ps, list, show
 - **registry_commands.py**: Registry list, add, remove, reload, import-config, export, check-gguf
+- **config_commands.py**: Config show, set (models_dir, cache_dir, server settings)
 
 #### Duplicate Code Removal
 - **Removed `core/models/registry.py`**: Eliminated duplicate model registry (kept `core/config/model_registry.py`)
@@ -103,6 +94,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **GGUF Metal acceleration**: All 11 GGUF models now list MPS in supported_devices (Metal acceleration via `CMAKE_ARGS="-DSD_METAL=ON"`)
 - **Registry MPS updates**: Added MPS support to `cogview4` and `lumina-2` model entries
 - **Smart quick-start**: `recommend` command suggests the best standalone model for your hardware (e.g. `pixart-sigma` for 16GB Mac)
+
+### ⚙️ Configuration Management
+- **`ollamadiffuser config` command**: New CLI command that shows all configuration (paths, server settings)
+- **`ollamadiffuser config set`**: Set custom model storage directory, cache directory, and server settings
+- **Custom paths**: `models_dir` and `cache_dir` can now be overridden and persisted in `config.json`
+- **Registry command visibility**: Made `ollamadiffuser registry` command visible in CLI help output
 
 ### 🔒 Security Fixes
 - **Path traversal prevention**: Removed `control_image_path` from `/api/generate` endpoint (use dedicated `/api/generate/controlnet` with file upload instead)

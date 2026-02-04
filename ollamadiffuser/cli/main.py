@@ -91,6 +91,11 @@ from .registry_commands import registry
 
 cli.add_command(registry)
 
+# --- Register config commands ---
+from .config_commands import config
+
+cli.add_command(config)
+
 # --- Register recommend command ---
 from .recommend_command import recommend
 

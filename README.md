@@ -332,6 +332,11 @@ ollamadiffuser registry list
 ollamadiffuser registry list --installed-only
 ollamadiffuser registry check-gguf
 
+# Configuration management
+ollamadiffuser config                                    # show all config
+ollamadiffuser config set models_dir /mnt/ssd/models     # custom model path
+ollamadiffuser config set server.port 9000               # change server port
+
 # In another terminal, generate images via API
 curl -X POST http://localhost:8000/api/generate \
   -H "Content-Type: application/json" \

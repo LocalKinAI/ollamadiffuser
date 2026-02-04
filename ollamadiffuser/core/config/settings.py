@@ -69,7 +69,18 @@ class Settings:
                     }
                 
                 self.current_model = config_data.get('current_model')
-                
+
+                # Load custom path overrides
+                if 'paths' in config_data:
+                    paths_data = config_data['paths']
+                    if 'models_dir' in paths_data:
+                        self.models_dir = Path(paths_data['models_dir'])
+                    if 'cache_dir' in paths_data:
+                        self.cache_dir = Path(paths_data['cache_dir'])
+                    # Ensure custom directories exist
+                    self.models_dir.mkdir(parents=True, exist_ok=True)
+                    self.cache_dir.mkdir(parents=True, exist_ok=True)
+
                 logger.info(f"Configuration file loaded: {self.config_file}")
                 
             except Exception as e:
@@ -99,7 +110,18 @@ class Settings:
                 },
                 'current_model': self.current_model
             }
-            
+
+            # Only persist path overrides when they differ from defaults
+            default_models_dir = self.config_dir / "models"
+            default_cache_dir = self.config_dir / "cache"
+            paths = {}
+            if self.models_dir != default_models_dir:
+                paths['models_dir'] = str(self.models_dir)
+            if self.cache_dir != default_cache_dir:
+                paths['cache_dir'] = str(self.cache_dir)
+            if paths:
+                config_data['paths'] = paths
+
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(config_data, f, indent=2, ensure_ascii=False)
             
