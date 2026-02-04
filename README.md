@@ -327,6 +327,11 @@ ollamadiffuser lora unload
 ollamadiffuser pull stable-diffusion-1.5
 ollamadiffuser run stable-diffusion-1.5
 
+# Model registry management
+ollamadiffuser registry list
+ollamadiffuser registry list --installed-only
+ollamadiffuser registry check-gguf
+
 # In another terminal, generate images via API
 curl -X POST http://localhost:8000/api/generate \
   -H "Content-Type: application/json" \

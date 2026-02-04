@@ -15,7 +15,7 @@ from ..core.config.model_registry import model_registry
 console = Console()
 
 
-@click.group(hidden=True)
+@click.group()
 def registry():
     """Manage model registry"""
     pass
