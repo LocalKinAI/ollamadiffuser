@@ -46,9 +46,9 @@ class VideoStrategy(InferenceStrategy):
                 steps_offset=1,
             )
 
-            if device == "cuda" and hasattr(self.pipeline, "enable_model_cpu_offload"):
+            if device in ("cuda", "mps") and hasattr(self.pipeline, "enable_model_cpu_offload"):
                 # CPU offloading manages device placement itself — don't call _move_to_device
-                self.pipeline.enable_model_cpu_offload()
+                self.pipeline.enable_model_cpu_offload(device=device)
             else:
                 self._move_to_device(device)
 

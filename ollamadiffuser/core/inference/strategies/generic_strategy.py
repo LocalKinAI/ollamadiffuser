@@ -72,9 +72,21 @@ class GenericPipelineStrategy(InferenceStrategy):
 
             # Device placement
             enable_offload = params.get("enable_cpu_offload", False)
-            if enable_offload and device == "cuda" and hasattr(self.pipeline, "enable_model_cpu_offload"):
-                self.pipeline.enable_model_cpu_offload()
-                logger.info("Enabled CPU offloading")
+            # Auto-enable CPU offload on MPS to avoid OOM on unified memory
+            if device == "mps":
+                enable_offload = True
+
+            if enable_offload and device in ("cuda", "mps"):
+                if hasattr(self.pipeline, "enable_sequential_cpu_offload"):
+                    # Sequential offload: moves individual layers, lowest memory usage
+                    self.pipeline.enable_sequential_cpu_offload(device=device)
+                    logger.info(f"Enabled sequential CPU offloading on {device}")
+                elif hasattr(self.pipeline, "enable_model_cpu_offload"):
+                    # Model offload: moves whole components, moderate memory usage
+                    self.pipeline.enable_model_cpu_offload(device=device)
+                    logger.info(f"Enabled model CPU offloading on {device}")
+                else:
+                    self._move_to_device(device)
             else:
                 self._move_to_device(device)
 

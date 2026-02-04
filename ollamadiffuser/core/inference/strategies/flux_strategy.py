@@ -46,10 +46,10 @@ class FluxStrategy(InferenceStrategy):
                 model_config.path, **load_kwargs
             )
 
-            if device == "cuda" and hasattr(self.pipeline, "enable_model_cpu_offload"):
+            if device in ("cuda", "mps") and hasattr(self.pipeline, "enable_model_cpu_offload"):
                 # CPU offloading manages device placement itself — don't call _move_to_device
-                self.pipeline.enable_model_cpu_offload()
-                logger.info("Enabled CPU offloading for FLUX")
+                self.pipeline.enable_model_cpu_offload(device=device)
+                logger.info(f"Enabled CPU offloading for FLUX on {device}")
             else:
                 self._move_to_device(device)
             self._apply_memory_optimizations()
