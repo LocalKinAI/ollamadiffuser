@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.20] - 2026-05-19
+
+### 📥 One-line `curl | sh` installer — no system Python required
+
+New `install.sh` at the repo root is the Ollama-style zero-friction install:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/LocalKinAI/ollamadiffuser/main/install.sh | sh
+```
+
+What it does, and deliberately does NOT depend on the user's Python:
+
+1. installs [`uv`](https://github.com/astral-sh/uv) (a single static binary) if absent;
+2. fetches a **standalone Python 3.12** via uv (python-build-standalone) — the
+   system Python is never touched;
+3. creates an **isolated** env at `~/.ollamadiffuser/venv` (with `--seed`, so
+   `ollamadiffuser enable ...` keeps working);
+4. installs the compile-free core (prebuilt wheels only);
+5. on Apple Silicon, also enables the native MLX backend (still compile-free);
+6. drops an `ollamadiffuser` launcher on PATH (symlink into `~/.local/bin` if
+   it's already on PATH, else an idempotent shell-rc line).
+
+Uninstall is `rm -rf ~/.ollamadiffuser`. Re-running upgrades in place.
+
+This removes the two structural barriers to an Ollama-class install: no
+reliance on the user's Python/pip/compiler, and full environment isolation
+(no clobbering the user's torch/numpy). The pip paths (`pip install
+ollamadiffuser`, extras, `enable`) are unchanged for users who prefer them.
+
+**Validated:** installer passes `sh -n` + `dash -n` + shellcheck. The uv
+mechanics were exercised end-to-end on Apple Silicon (isolated `uv venv
+--seed` yields a working pip; the launcher shim forwards args; `uv pip
+install --dry-run ollamadiffuser` resolves the full wheel set with no
+compile step). The fresh-machine path (no uv/Python at all) should be
+smoke-tested on a clean Mac before the release is announced.
+
 ## [2.0.19] - 2026-05-19
 
 ### 🗂️ Model registry moved to data (`models.yaml`) — contributor flywheel

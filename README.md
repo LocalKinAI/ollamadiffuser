@@ -6,6 +6,14 @@
 
 ## 🆕 What's New
 
+### v2.0.20 — One-line `curl | sh` installer (no system Python needed)
+
+`curl -fsSL .../install.sh | sh` now installs a fully **isolated** OllamaDiffuser via [uv](https://github.com/astral-sh/uv): a standalone Python + the compile-free core under `~/.ollamadiffuser`, with a launcher on your PATH. It doesn't touch your system Python, needs no compiler, and auto-enables MLX on Apple Silicon — the Ollama-style zero-friction install.
+
+### v2.0.19 — Model registry is now data (`models.yaml`)
+
+The 59 built-in models moved from a 1500-line Python dict into a bundled [`models.yaml`](ollamadiffuser/core/config/models.yaml). Adding a model is now a **pure-data PR** — no code. Migration is zero-loss (snapshot-pinned in tests).
+
 ### v2.0.18 — Compile-free default install + `enable` command
 
 The default `pip install ollamadiffuser` is now **compile-free** (prebuilt wheels only — no CMake, no CUDA toolchain). Optional backends are opt-in by name via a new command: `ollamadiffuser enable mlx | gguf | mcp` — no shell-quoted `[extras]` to get wrong, and `enable gguf` sets the right `CMAKE_ARGS` (Metal on Mac) for you. The `curl | sh` installer now defaults to the lean core and auto-enables MLX on Apple Silicon.
@@ -50,9 +58,18 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history (back to v1.0.0, May 2025)
 
 ## 🚀 Quick Start
 
+### Zero-dependency install (recommended — no Python setup needed)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/LocalKinAI/ollamadiffuser/main/install.sh | sh
+```
+
+This installs an **isolated** Python + OllamaDiffuser under `~/.ollamadiffuser` (via [uv](https://github.com/astral-sh/uv) — a single static binary) and drops an `ollamadiffuser` launcher on your PATH. It **never touches your system Python**, needs no `pip`/`venv`/compiler, and on Apple Silicon auto-enables the MLX backend. Uninstall is `rm -rf ~/.ollamadiffuser`.
+
+### Already have a Python env?
+
 The default install is **compile-free** — prebuilt wheels only, no CMake and no CUDA toolchain. Optional backends are opt-in **by name**, so you never fight bracket-quoting in your shell.
 
-**Everyone — one line, no build tools:**
 ```bash
 pip install ollamadiffuser
 ollamadiffuser recommend   # Find which models fit your hardware
