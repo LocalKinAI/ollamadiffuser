@@ -2,7 +2,7 @@
 
 **Thank you for the incredible support and over 30,000 downloads!**
 
-`ollamadiffuser` is in **active development**. v2.0 brought a major architecture overhaul (strategy pattern, MCP/OpenClaw integration, Apple Silicon support, GGUF). The May 2026 line (v2.0.13 → v2.0.18) added an **MLX backend for Apple Silicon**, 7 new diffusers-pipeline models, and a **compile-free default install** — see [What's New](#-whats-new) below. Part of the **[LocalKinAI](https://github.com/LocalKinAI)** ecosystem.
+`ollamadiffuser` is in **active development**. v2.0 brought a major architecture overhaul (strategy pattern, MCP/OpenClaw integration, Apple Silicon support, GGUF). The May 2026 line (v2.0.13 → v2.0.20) added an **MLX backend for Apple Silicon**, 7 new diffusers-pipeline models, a **compile-free default install** with a one-line `curl | sh` installer, and a **data-driven model registry** (`models.yaml`) — see [What's New](#-whats-new) below. Part of the **[LocalKinAI](https://github.com/LocalKinAI)** ecosystem.
 
 ## 🆕 What's New
 
@@ -157,10 +157,10 @@ This ensures you get:
 
 ### GGUF Quick Start (Low VRAM)
 ```bash
-# For systems with limited VRAM (3GB+)
-pip install "ollamadiffuser[gguf]"
+# Enable the GGUF backend (compiles once; sets the right build flags for you)
+ollamadiffuser enable gguf
 
-# Download memory-efficient GGUF model
+# Download a memory-efficient GGUF model (3GB+ VRAM)
 ollamadiffuser pull flux.1-dev-gguf-q4ks
 
 # Generate with reduced memory usage
@@ -176,9 +176,14 @@ ollamadiffuser recommend
 ollamadiffuser pull sdxl-turbo
 ollamadiffuser run sdxl-turbo
 
+# Native MLX path — typically 2-3x faster than PyTorch+MPS (auto-enabled
+# by the curl|sh installer; run this if you installed via pip)
+ollamadiffuser enable mlx
+ollamadiffuser pull flux.1-schnell-mlx
+ollamadiffuser run flux.1-schnell-mlx
+
 # GGUF with Metal acceleration (6GB, great quality)
-pip install "ollamadiffuser[gguf]"
-CMAKE_ARGS="-DSD_METAL=ON" pip install stable-diffusion-cpp-python
+ollamadiffuser enable gguf   # sets CMAKE_ARGS=-DSD_METAL=ON under the hood
 ollamadiffuser pull flux.1-dev-gguf-q4ks
 ollamadiffuser run flux.1-dev-gguf-q4ks
 ```
@@ -613,7 +618,7 @@ else:
 ### GGUF Quantized Models
 - **FLUX.1-dev GGUF**: 7 quantization levels (3GB-16GB VRAM)
 - **Memory Efficient**: Run high-quality models on budget hardware
-- **Optional Install**: `pip install "ollamadiffuser[gguf]"`
+- **Optional Install**: `ollamadiffuser enable gguf`
 
 ### ControlNet Models
 - **SD 1.5 ControlNet**: 4 control types (canny, depth, openpose, scribble)
@@ -739,7 +744,7 @@ with open("control.jpg", "rb") as f:
 - **16GB unified memory**: SANA 1.5, Lumina 2.0, DreamShaper, SD 1.5, SDXL/SDXL Turbo, GGUF q2k-q5ks
 - **24GB+ unified memory**: CogView4, Hunyuan-DiT, FLUX.1-schnell, GGUF q6k-q8
 - **32GB unified memory**: Kolors, SD 3.5 Large, all MPS-supported models
-- **GGUF with Metal**: Install with `CMAKE_ARGS="-DSD_METAL=ON"` for GPU acceleration
+- **GGUF with Metal**: `ollamadiffuser enable gguf` (sets `CMAKE_ARGS=-DSD_METAL=ON` for GPU acceleration automatically)
 - **Note**: CPU offload does not help on Apple Silicon (unified memory) -- the full model must fit in RAM
 - Run `ollamadiffuser recommend` to see what fits your hardware
 
@@ -758,36 +763,25 @@ with open("control.jpg", "rb") as f:
 ### Installation Issues
 
 #### Missing Dependencies (cv2/OpenCV Error)
-If you encounter `ModuleNotFoundError: No module named 'cv2'`, run:
+The default install already includes OpenCV (it ships as a prebuilt wheel), so this is rare. If you somehow hit `ModuleNotFoundError: No module named 'cv2'`:
 
 ```bash
-# Quick fix
-pip install opencv-python>=4.8.0
-
-# Or use the built-in verification tool
+# Verify and repair the install
 ollamadiffuser verify-deps
 
-# Or install with all optional dependencies
-# For bash/sh:
-pip install ollamadiffuser[full]
-
-# For zsh (macOS default):
-pip install "ollamadiffuser[full]"
-
-# For fish shell:
-pip install 'ollamadiffuser[full]'
+# Or install OpenCV directly
+pip install "opencv-python>=4.8.0"
 ```
 
 #### GGUF Support Issues
 ```bash
-# Install GGUF dependencies
-pip install "ollamadiffuser[gguf]"
+# Enable the GGUF backend (compiles once; sets build flags for you)
+ollamadiffuser enable gguf
 
 # Check GGUF support
 ollamadiffuser registry check-gguf
 
-# See full GGUF troubleshooting guide
-# Read GGUF_GUIDE.md for detailed troubleshooting
+# See GGUF_GUIDE.md for detailed troubleshooting
 ```
 
 #### Complete Dependency Check
@@ -800,23 +794,21 @@ ollamadiffuser verify-deps
 ```
 
 #### Clean Installation
-If you're having persistent issues:
+If you're having persistent issues, the isolated `curl | sh` installer sidesteps
+any conflicts in your existing Python environment:
 
 ```bash
-# Uninstall and reinstall
+# Fully isolated reinstall (never touches your system Python)
+rm -rf ~/.ollamadiffuser
+curl -fsSL https://raw.githubusercontent.com/LocalKinAI/ollamadiffuser/main/install.sh | sh
+```
+
+Or, staying in your own environment:
+
+```bash
 pip uninstall ollamadiffuser
-
-# Reinstall with all dependencies (shell-specific syntax):
-# For bash/sh:
-pip install --no-cache-dir ollamadiffuser[full]
-
-# For zsh (macOS default):
-pip install --no-cache-dir "ollamadiffuser[full]"
-
-# For fish shell:
-pip install --no-cache-dir 'ollamadiffuser[full]'
-
-# Verify installation
+pip install --no-cache-dir ollamadiffuser   # compile-free core
+ollamadiffuser enable gguf   # add optional backends only if you need them
 ollamadiffuser verify-deps
 ```
 
@@ -865,18 +857,19 @@ curl -X POST http://localhost:8000/api/generate \
 ```bash
 # If you encounter OpenCV issues on Apple Silicon
 pip uninstall opencv-python
-pip install opencv-python-headless>=4.8.0
+pip install "opencv-python-headless>=4.8.0"
 
-# For GGUF Metal acceleration
-CMAKE_ARGS="-DSD_METAL=ON" pip install stable-diffusion-cpp-python
+# GGUF with Metal acceleration — `enable gguf` sets CMAKE_ARGS=-DSD_METAL=ON for you
+ollamadiffuser enable gguf
 ```
 
 #### Windows
 ```bash
 # If you encounter build errors
-pip install --only-binary=all opencv-python>=4.8.0
+pip install --only-binary=all "opencv-python>=4.8.0"
 
-# For GGUF CUDA acceleration
+# GGUF on CPU: `ollamadiffuser enable gguf`
+# GGUF with CUDA acceleration (advanced — set the flag yourself):
 CMAKE_ARGS="-DSD_CUDA=ON" pip install stable-diffusion-cpp-python
 ```
 

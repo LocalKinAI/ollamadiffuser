@@ -34,6 +34,25 @@ reliance on the user's Python/pip/compiler, and full environment isolation
 (no clobbering the user's torch/numpy). The pip paths (`pip install
 ollamadiffuser`, extras, `enable`) are unchanged for users who prefer them.
 
+**One installer, not two.** The legacy `install_ollamadiffuser.sh` (a
+pip-into-your-own-env wrapper) was removed. Its entire function — `pip
+install ollamadiffuser` plus auto-enabling MLX on Apple Silicon — is now
+covered by documented one-line commands, so a second script was just
+clutter. `install.sh` (isolated, uv-based) is the single canonical
+installer; users who want their own environment run `pip install
+ollamadiffuser` directly.
+
+**README consistency pass:** every install snippet that still taught a
+compile path as the *primary* action was reconciled with the new story —
+GGUF and Apple Silicon Quick Starts now lead with `ollamadiffuser enable
+gguf` / `enable mlx`; the Troubleshooting section drops the obsolete
+`[full]` shell-quoting blocks (the default install already carries OpenCV
+etc.) and points persistent-issue users at the isolated `curl | sh`
+reinstall; the manual `CMAKE_ARGS=-DSD_METAL=ON` step is reframed as "what
+`enable gguf` does under the hood." The manual `CMAKE_ARGS=-DSD_CUDA=ON`
+path stays documented as the advanced CUDA-acceleration route (`enable
+gguf` currently only auto-sets the Metal flag on macOS).
+
 **Validated:** installer passes `sh -n` + `dash -n` + shellcheck. The uv
 mechanics were exercised end-to-end on Apple Silicon (isolated `uv venv
 --seed` yields a working pip; the launcher shim forwards args; `uv pip
