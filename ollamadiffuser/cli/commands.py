@@ -9,6 +9,85 @@ from ..core.config.settings import settings
 
 console = Console()
 
+
+# Optional backends that are NOT installed by default, keyed by the name
+# users pass to `ollamadiffuser enable <name>`. The default install is
+# intentionally compile-free; these are opt-in because they either need
+# extra wheels (mlx, mcp) or compile a native extension (gguf).
+def _build_enable_command(backend: str):
+    """Build the pip invocation for an optional backend.
+
+    Returns ``(argv, env_overrides_or_None, human_note)``.
+    Raises ``ValueError`` for an unknown backend or an unsupported platform.
+    """
+    import platform
+
+    if backend == "mlx":
+        if not (platform.system() == "Darwin" and platform.machine() == "arm64"):
+            raise ValueError(
+                "MLX backend requires Apple Silicon (macOS arm64). "
+                f"Detected {platform.system()}/{platform.machine()}. "
+                "Use the default PyTorch path, or 'enable gguf' for low-VRAM."
+            )
+        return (
+            [sys.executable, "-m", "pip", "install", "mflux>=0.17.0"],
+            None,
+            "Apple Silicon native inference — typically 2-3x faster than PyTorch+MPS.",
+        )
+
+    if backend == "gguf":
+        env_overrides = None
+        # Metal GPU acceleration on Mac; other platforms use the library's
+        # default toolchain (users can pre-set CMAKE_ARGS for CUDA, etc.).
+        if platform.system() == "Darwin":
+            env_overrides = {"CMAKE_ARGS": "-DSD_METAL=ON"}
+        return (
+            [
+                sys.executable, "-m", "pip", "install",
+                "stable-diffusion-cpp-python>=0.1.0", "gguf>=0.1.0",
+            ],
+            env_overrides,
+            "Low-VRAM quantized models. Compiles a native extension (~1-3 min).",
+        )
+
+    if backend == "mcp":
+        return (
+            [sys.executable, "-m", "pip", "install", "mcp[cli]>=1.0.0"],
+            None,
+            "Model Context Protocol server for OpenClaw / Claude Code / Cursor.",
+        )
+
+    raise ValueError(f"Unknown backend {backend!r}. Choose one of: mlx, gguf, mcp.")
+
+
+def enable_backend(backend: str) -> int:
+    """Install an optional backend's dependencies. Returns a process exit code."""
+    import os
+
+    try:
+        argv, env_overrides, note = _build_enable_command(backend)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        return 1
+
+    console.print(f"[bold cyan]Enabling '{backend}' backend[/bold cyan] [dim]— {note}[/dim]")
+    run_env = None
+    if env_overrides:
+        run_env = {**os.environ, **env_overrides}
+        shown = " ".join(f"{k}={v}" for k, v in env_overrides.items())
+        console.print(f"[dim]  build flags: {shown}[/dim]")
+
+    result = subprocess.run(argv, env=run_env)
+    if result.returncode == 0:
+        console.print(f"[green]✓ '{backend}' backend enabled.[/green]")
+    else:
+        console.print(
+            f"[red]✗ Failed to enable '{backend}' (pip exited {result.returncode}). "
+            "See output above.[/red]"
+        )
+    return result.returncode
+
+
 @click.command()
 def verify_deps():
     """Verify and install missing dependencies"""

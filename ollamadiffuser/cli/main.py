@@ -116,6 +116,28 @@ def version():
     rprint("\n[dim]For help: ollamadiffuser --help[/dim]")
 
 
+@cli.command(name="enable")
+@click.argument("backend", type=click.Choice(["mlx", "gguf", "mcp"]))
+def enable_cmd(backend):
+    """Enable an optional backend by installing its dependencies.
+
+    \b
+    Examples:
+      ollamadiffuser enable mlx     # Apple Silicon native (2-3x faster)
+      ollamadiffuser enable gguf    # low-VRAM quantized models (compiles)
+      ollamadiffuser enable mcp     # Model Context Protocol server
+
+    The default install is intentionally lean and compile-free. Use
+    'enable' to opt into backends that need extra or compiled deps —
+    no bracketed pip extras to quote.
+    """
+    from .commands import enable_backend
+
+    code = enable_backend(backend)
+    if code != 0:
+        sys.exit(code)
+
+
 @cli.command(name="verify-deps")
 def verify_deps_cmd():
     """Verify and install missing dependencies"""

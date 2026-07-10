@@ -1,80 +1,67 @@
 #!/bin/bash
+#
+# OllamaDiffuser installer.
+#
+# Design goal: a compile-free default. The core install pulls only
+# prebuilt wheels (no CMake, no CUDA toolchain). The one backend that
+# needs to compile — GGUF — is opt-in via `ollamadiffuser enable gguf`.
+#
+set -e
 
-echo "🎨 OllamaDiffuser Installation Script"
-echo "===================================="
+echo "🎨 OllamaDiffuser Installer"
+echo "==========================="
 
-# Function to check if command exists
-command_exists() {
-    command -v "$1" >/dev/null 2>&1
-}
+command_exists() { command -v "$1" >/dev/null 2>&1; }
 
-# Check Python version
+# --- Python 3.10+ ---
 if ! command_exists python3; then
-    echo "❌ Python 3 is not installed. Please install Python 3.10+ first."
+    echo "❌ Python 3 not found. Install Python 3.10+ first."
     exit 1
 fi
-
 PYTHON_VERSION=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
 MIN_VERSION="3.10"
-
 if [ "$(printf '%s\n' "$MIN_VERSION" "$PYTHON_VERSION" | sort -V | head -n1)" != "$MIN_VERSION" ]; then
-    echo "❌ Python $PYTHON_VERSION detected. OllamaDiffuser requires Python 3.10+."
+    echo "❌ Python $PYTHON_VERSION detected. OllamaDiffuser needs Python 3.10+."
     exit 1
 fi
+echo "✅ Python $PYTHON_VERSION"
 
-echo "✅ Python $PYTHON_VERSION detected"
-
-# Check pip
 if ! command_exists pip3; then
-    echo "❌ pip3 is not installed. Please install pip first."
+    echo "❌ pip3 not found. Install pip first."
     exit 1
 fi
 
-echo "✅ pip3 detected"
-
-# Install OllamaDiffuser with all dependencies
+# --- Core install (compile-free: prebuilt wheels only) ---
 echo ""
-echo "📦 Installing OllamaDiffuser..."
-pip3 install --upgrade pip
+echo "📦 Installing OllamaDiffuser (compile-free core)..."
+pip3 install --upgrade pip >/dev/null
+pip3 install ollamadiffuser
 
-# Try to install with all optional dependencies
-echo "📦 Installing OllamaDiffuser with full dependencies..."
-if pip3 install ollamadiffuser[full]; then
-    echo "✅ OllamaDiffuser installed successfully!"
-else
-    echo "⚠️  Full installation failed, trying basic installation..."
-    if pip3 install ollamadiffuser; then
-        echo "✅ Basic OllamaDiffuser installed"
-        echo "📦 Installing missing dependencies manually..."
-        pip3 install "opencv-python>=4.8.0" || echo "⚠️ OpenCV installation failed"
-        pip3 install "controlnet-aux>=0.0.7" || echo "⚠️ ControlNet-aux installation failed"
-    else
-        echo "❌ Failed to install OllamaDiffuser"
-        exit 1
-    fi
+# --- Apple Silicon: enable the fast MLX path (also compile-free) ---
+if [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ]; then
+    echo ""
+    echo "🍎 Apple Silicon detected — enabling MLX backend (typically 2-3× faster)..."
+    pip3 install "mflux>=0.17.0" \
+        || echo "⚠️  MLX install skipped; run 'ollamadiffuser enable mlx' later."
 fi
 
-# Verify installation
+# --- Verify ---
 echo ""
-echo "🔍 Verifying installation..."
 if command_exists ollamadiffuser; then
-    echo "✅ OllamaDiffuser command is available"
-    
-    # Run dependency verification
+    echo "✅ Installed."
     echo ""
-    echo "🩺 Running system diagnostics..."
-    ollamadiffuser doctor
-    
+    echo "Quick start:"
+    echo "  ollamadiffuser recommend               # which models fit your hardware"
+    echo "  ollamadiffuser pull flux.1-schnell     # download a model"
+    echo "  ollamadiffuser run  flux.1-schnell     # serve it"
     echo ""
-    echo "🎉 Installation complete!"
-    echo ""
-    echo "Quick start commands:"
-    echo "  ollamadiffuser pull flux.1-schnell    # Download a model"
-    echo "  ollamadiffuser run flux.1-schnell     # Start the model"
-    echo "  ollamadiffuser --mode ui              # Start web interface"
-    echo ""
-    echo "For help: ollamadiffuser --help"
+    echo "Optional backends (opt-in, no bracket-quoting needed):"
+    echo "  ollamadiffuser enable gguf             # low-VRAM quantized models (compiles)"
+    echo "  ollamadiffuser enable mcp              # Model Context Protocol server"
+    echo "  ollamadiffuser enable mlx              # Apple Silicon native (if skipped above)"
 else
-    echo "❌ OllamaDiffuser command not found after installation"
+    echo "❌ 'ollamadiffuser' not on PATH after install."
+    echo "   pip may have installed to a user directory that isn't on your PATH."
+    echo "   Try: python3 -m ollamadiffuser --help"
     exit 1
-fi 
+fi

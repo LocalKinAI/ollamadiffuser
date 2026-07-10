@@ -5,6 +5,72 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.18] - 2026-05-19
+
+### 📦 Compile-free default install + `enable` command (install-friction / Tier 0)
+
+The single biggest onboarding failure mode was the installer defaulting to
+the `[full]` extra, which pulls `stable-diffusion-cpp-python` and compiles
+a native extension (needs CMake + `CMAKE_ARGS=-DSD_METAL=ON`, and fails on
+machines without a toolchain). The core dependency set is already 100%
+prebuilt wheels on the supported platforms — nothing in it needs to
+compile. This release stops making everyone pay the GGUF compile tax up
+front.
+
+#### New: `ollamadiffuser enable <backend>`
+
+```bash
+ollamadiffuser enable mlx     # Apple Silicon native (2-3x faster); installs mflux
+ollamadiffuser enable gguf    # low-VRAM quantized models; compiles, sets CMAKE_ARGS for you
+ollamadiffuser enable mcp     # Model Context Protocol server deps
+```
+
+- Ollama-style opt-in **by name** — no shell-quoted `[extras]` to get wrong
+  (the reason `install_helper.py` existed; see Removed).
+- `enable gguf` injects `CMAKE_ARGS=-DSD_METAL=ON` on macOS so users don't
+  have to remember the Metal build flag; other platforms use their default
+  toolchain.
+- `enable mlx` guards on Apple Silicon (macOS arm64) and refuses elsewhere
+  with a clear message instead of a confusing pip error.
+- Implemented as `_build_enable_command()` (pure, testable) +
+  `enable_backend()` in `cli/commands.py`, wired as `enable` in `cli/main.py`.
+
+#### Installer script rewrite (`install_ollamadiffuser.sh`)
+
+- Default install is now `pip install ollamadiffuser` (compile-free core),
+  **not** `[full]`.
+- On Apple Silicon it auto-enables the MLX backend (`mflux`, also
+  compile-free) — sharpening the Mac-first wedge.
+- GGUF is surfaced as an opt-in hint (`ollamadiffuser enable gguf`), not a
+  forced compile.
+
+#### Docs
+
+- README Quick Start rewritten to lead with the compile-free path and the
+  `enable` command; explains why `enable gguf` beats
+  `pip install "ollamadiffuser[gguf]"`. Migration note no longer defaults
+  to `[full]`.
+
+### Removed
+
+- **`install_helper.py`** — its entire job was telling users how to quote
+  `pip install "ollamadiffuser[full]"` for their shell (zsh vs fish vs
+  bash). With the default install carrying no bracketed extras, that
+  friction no longer exists. Nothing imported it.
+
+### Tests
+
+- 12 new tests in `tests/test_enable_backend.py`: per-backend command
+  construction, MLX platform guard (Linux / Intel-Mac rejection), GGUF
+  Metal-flag injection on Mac vs none off-Mac, exit-code plumbing, and
+  the platform-guard/unknown-backend paths never invoking pip. `subprocess.run`
+  is mocked — no real installs. **136 passed, 8 skipped.**
+
+### Note
+
+The bracketed extras (`[gguf]`, `[mlx]`, `[mcp]`, `[full]`) are unchanged and
+still work for users who prefer them or pin them in requirements files.
+
 ## [2.0.17] - 2026-05-18
 
 ### 🍎 MLX Backend Phase 2.5 — FLUX.1 family completion (#7)

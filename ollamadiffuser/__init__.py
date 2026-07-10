@@ -4,7 +4,7 @@ OllamaDiffuser - Local AI Image Generation with Ollama-style CLI
 A tool for managing and running Stable Diffusion, FLUX.1, and other AI image generation models locally.
 """
 
-__version__ = "2.0.17"
+__version__ = "2.0.18"
 __author__ = "LocalKinAI Team"
 __email__ = "contact@localkin.ai"
 __description__ = "🎨 Local AI Image Generation with Ollama-style CLI for Stable Diffusion, FLUX.1, and LoRA support"

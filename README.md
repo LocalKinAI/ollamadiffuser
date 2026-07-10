@@ -2,9 +2,13 @@
 
 **Thank you for the incredible support and over 30,000 downloads!**
 
-`ollamadiffuser` is in **active development**. v2.0 brought a major architecture overhaul (strategy pattern, MCP/OpenClaw integration, Apple Silicon support, GGUF). The May 2026 line (v2.0.13 → v2.0.17) added an **MLX backend for Apple Silicon** plus 7 new diffusers-pipeline models — see [What's New](#-whats-new) below. Part of the **[LocalKinAI](https://github.com/LocalKinAI)** ecosystem.
+`ollamadiffuser` is in **active development**. v2.0 brought a major architecture overhaul (strategy pattern, MCP/OpenClaw integration, Apple Silicon support, GGUF). The May 2026 line (v2.0.13 → v2.0.18) added an **MLX backend for Apple Silicon**, 7 new diffusers-pipeline models, and a **compile-free default install** — see [What's New](#-whats-new) below. Part of the **[LocalKinAI](https://github.com/LocalKinAI)** ecosystem.
 
 ## 🆕 What's New
+
+### v2.0.18 — Compile-free default install + `enable` command
+
+The default `pip install ollamadiffuser` is now **compile-free** (prebuilt wheels only — no CMake, no CUDA toolchain). Optional backends are opt-in by name via a new command: `ollamadiffuser enable mlx | gguf | mcp` — no shell-quoted `[extras]` to get wrong, and `enable gguf` sets the right `CMAKE_ARGS` (Metal on Mac) for you. The `curl | sh` installer now defaults to the lean core and auto-enables MLX on Apple Silicon.
 
 ### v2.0.17 — MLX Phase 2.5: FLUX.1 family completion
 
@@ -40,30 +44,42 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history (back to v1.0.0, May 2025)
 
 🌐 **Website**: [ollamadiffuser.com](https://www.ollamadiffuser.com/) | 📦 **PyPI**: [pypi.org/project/ollamadiffuser](https://pypi.org/project/ollamadiffuser/)
 
-> **Upgrading from v1.x?** v2.0 is a major rewrite requiring **Python 3.10+**. Run `pip install --upgrade "ollamadiffuser[full]"` and see the [Migration Guide](#-migration-guide) below.
+> **Upgrading from v1.x?** v2.0 is a major rewrite requiring **Python 3.10+**. Run `pip install --upgrade ollamadiffuser` (then `ollamadiffuser enable gguf`/`mlx` if you need those backends) and see the [Migration Guide](#-migration-guide) below.
 
 ---
 
 ## 🚀 Quick Start
 
-**For Mac/PC Users:**
+The default install is **compile-free** — prebuilt wheels only, no CMake and no CUDA toolchain. Optional backends are opt-in **by name**, so you never fight bracket-quoting in your shell.
+
+**Everyone — one line, no build tools:**
 ```bash
-pip install "ollamadiffuser[full]"
-ollamadiffuser recommend  # Find which models fit your GPU
+pip install ollamadiffuser
+ollamadiffuser recommend   # Find which models fit your hardware
 ```
 
-**For OpenClaw/Agent Users:**
+**Mac / Apple Silicon (recommended — typically 2-3× faster):**
 ```bash
-pip install "ollamadiffuser[mcp]"
-ollamadiffuser mcp        # Starts the MCP server
+pip install ollamadiffuser
+ollamadiffuser enable mlx  # native MLX backend, still compile-free
 ```
 
-**For Low-VRAM / Budget GPU Users:**
+**OpenClaw / Agent users:**
 ```bash
-pip install "ollamadiffuser[gguf]"
-ollamadiffuser pull flux.1-dev-gguf-q4ks  # Only 6GB VRAM needed
-ollamadiffuser run flux.1-dev-gguf-q4ks
+pip install ollamadiffuser
+ollamadiffuser enable mcp  # Model Context Protocol server deps
+ollamadiffuser mcp         # start the server
 ```
+
+**Low-VRAM / GGUF (advanced — compiles a native extension):**
+```bash
+pip install ollamadiffuser
+ollamadiffuser enable gguf                 # sets Metal/CUDA build flags for you
+ollamadiffuser pull flux.1-dev-gguf-q4ks   # only 6GB VRAM needed
+ollamadiffuser run  flux.1-dev-gguf-q4ks
+```
+
+> **Why `enable` instead of `pip install "ollamadiffuser[gguf]"`?** The GGUF backend compiles a native library (`stable-diffusion-cpp-python`). `ollamadiffuser enable gguf` runs that build with the right `CMAKE_ARGS` for your platform (Metal on Mac) so you never have to remember them — and there are no shell-quoted `[extras]` to get wrong. The bracketed extras (`[gguf]`, `[mlx]`, `[mcp]`, `[full]`) still work if you prefer them.
 
 Most models work **without any token** -- just install and go. See [Hugging Face Authentication](#-hugging-face-authentication) when you want gated models like FLUX.1-dev or SD 3.5.
 
