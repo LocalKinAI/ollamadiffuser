@@ -1,0 +1,1384 @@
+# OllamaDiffuser built-in model registry.
+#
+# This is the source of truth for bundled models. To add a model,
+# add an entry under `models:` — no Python changes needed. Contributors
+# can submit a model as a pure-data PR against this file.
+#
+# Schema per entry: repo_id, model_type, (variant), parameters,
+# hardware_requirements, license_info. See CONTRIBUTING.md.
+#
+# User overrides still load from ~/.ollamadiffuser/models.yaml at runtime.
+version: 1
+models:
+  flux.1-dev:
+    repo_id: black-forest-labs/FLUX.1-dev
+    model_type: flux
+    variant: fp16
+    parameters:
+      num_inference_steps: 20
+      guidance_scale: 3.0
+      max_sequence_length: 512
+    hardware_requirements:
+      min_vram_gb: 20
+      recommended_vram_gb: 24
+      min_ram_gb: 32
+      recommended_ram_gb: 64
+      disk_space_gb: 24
+      supported_devices:
+      - CUDA
+      performance_notes: Requires significant VRAM. Consider using smaller variants for lower-end hardware.
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  flux.1-schnell:
+    repo_id: black-forest-labs/FLUX.1-schnell
+    model_type: flux
+    variant: fp16
+    parameters:
+      num_inference_steps: 4
+      guidance_scale: 1.0
+      max_sequence_length: 256
+    hardware_requirements:
+      min_vram_gb: 16
+      recommended_vram_gb: 20
+      min_ram_gb: 24
+      recommended_ram_gb: 32
+      disk_space_gb: 24
+      supported_devices:
+      - CUDA
+      - MPS
+      performance_notes: Faster variant with fewer steps. Good balance of speed and quality.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  flux.1-kontext-dev:
+    repo_id: black-forest-labs/FLUX.1-Kontext-dev
+    model_type: flux
+    variant: fp16
+    parameters:
+      pipeline_class: FluxKontextPipeline
+      num_inference_steps: 28
+      guidance_scale: 2.5
+      max_sequence_length: 512
+    hardware_requirements:
+      min_vram_gb: 20
+      recommended_vram_gb: 24
+      min_ram_gb: 32
+      recommended_ram_gb: 64
+      disk_space_gb: 24
+      supported_devices:
+      - CUDA
+      - MPS
+      performance_notes: 12B instruction-based image editing model. Pass an input 'image' to the generate
+        call along with the edit prompt. Native diffusers FluxKontextPipeline. Top-trending image-edit
+        model on HuggingFace.
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  flux.1-schnell-mlx:
+    repo_id: black-forest-labs/FLUX.1-schnell
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: flux1
+      mlx_model_name: schnell
+      quantize: 8
+      num_inference_steps: 4
+      guidance_scale: 0.0
+      max_sequence_length: 256
+    hardware_requirements:
+      min_vram_gb: 12
+      recommended_vram_gb: 16
+      min_ram_gb: 16
+      recommended_ram_gb: 32
+      disk_space_gb: 14
+      supported_devices:
+      - MPS
+      performance_notes: 'Apple Silicon native via mflux. Typically 2-3x faster than the PyTorch+MPS path.
+        Apache 2.0. Requires the [mlx] extra: pip install ''ollamadiffuser[mlx]''.'
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  flux.1-dev-mlx:
+    repo_id: black-forest-labs/FLUX.1-dev
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: flux1
+      mlx_model_name: dev
+      quantize: 8
+      num_inference_steps: 28
+      guidance_scale: 3.5
+      max_sequence_length: 512
+    hardware_requirements:
+      min_vram_gb: 12
+      recommended_vram_gb: 16
+      min_ram_gb: 16
+      recommended_ram_gb: 32
+      disk_space_gb: 14
+      supported_devices:
+      - MPS
+      performance_notes: Apple Silicon native via mflux at 8-bit quant. Typically 2-3x faster than PyTorch+MPS.
+        Gated FLUX.1-dev license — set HF_TOKEN before pulling. Requires the [mlx] extra.
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  flux.1-schnell-mlx-q4:
+    repo_id: black-forest-labs/FLUX.1-schnell
+    model_type: mlx
+    variant: mlx-q4
+    parameters:
+      mlx_variant: flux1
+      mlx_model_name: schnell
+      quantize: 4
+      num_inference_steps: 4
+      guidance_scale: 0.0
+      max_sequence_length: 256
+    hardware_requirements:
+      min_vram_gb: 6
+      recommended_vram_gb: 12
+      min_ram_gb: 16
+      recommended_ram_gb: 24
+      disk_space_gb: 8
+      supported_devices:
+      - MPS
+      performance_notes: Mac Mini M4 16GB friendly. 4-bit MLX quant of FLUX.1-schnell — small quality
+        drop vs Q8 but fits ~8GB. Apache 2.0.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  flux.1-kontext-dev-mlx:
+    repo_id: black-forest-labs/FLUX.1-Kontext-dev
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: flux1-kontext
+      mlx_model_name: dev
+      quantize: 8
+      num_inference_steps: 28
+      guidance_scale: 2.5
+    hardware_requirements:
+      min_vram_gb: 12
+      recommended_vram_gb: 20
+      min_ram_gb: 24
+      recommended_ram_gb: 32
+      disk_space_gb: 14
+      supported_devices:
+      - MPS
+      performance_notes: Apple Silicon native image editing via mflux. 12B Kontext model at 8-bit MLX
+        quant. Requires an input image — pass image=<PIL.Image|path> to generate(). Gated license.
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  flux.2-klein-4b-mlx:
+    repo_id: black-forest-labs/FLUX.2-klein-4B
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: flux2
+      mlx_model_name: klein-4b
+      quantize: 8
+      num_inference_steps: 28
+      guidance_scale: 3.5
+    hardware_requirements:
+      min_vram_gb: 6
+      recommended_vram_gb: 12
+      min_ram_gb: 16
+      recommended_ram_gb: 32
+      disk_space_gb: 7
+      supported_devices:
+      - MPS
+      performance_notes: Apple Silicon native FLUX.2 4B at 8-bit MLX. Fits Mac Mini M4 16GB UMA. Apache
+        2.0 — commercial-friendly.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  flux.2-klein-9b-mlx:
+    repo_id: black-forest-labs/FLUX.2-klein-9B
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: flux2
+      mlx_model_name: klein-9b
+      quantize: 8
+      num_inference_steps: 28
+      guidance_scale: 3.5
+    hardware_requirements:
+      min_vram_gb: 12
+      recommended_vram_gb: 20
+      min_ram_gb: 24
+      recommended_ram_gb: 32
+      disk_space_gb: 13
+      supported_devices:
+      - MPS
+      performance_notes: Apple Silicon native FLUX.2 9B at 8-bit MLX. Fits Mac Pro M1 32GB; tight on M4
+        16GB. Apache 2.0.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  z-image-turbo-mlx:
+    repo_id: Tongyi-MAI/Z-Image-Turbo
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: z_image
+      mlx_model_name: z-image-turbo
+      quantize: 8
+      num_inference_steps: 8
+      guidance_scale: 4.0
+    hardware_requirements:
+      min_vram_gb: 6
+      recommended_vram_gb: 12
+      min_ram_gb: 16
+      recommended_ram_gb: 24
+      disk_space_gb: 8
+      supported_devices:
+      - MPS
+      performance_notes: Apple Silicon native Z-Image-Turbo via mflux. 6B parameters, 8-step DMD, 8-bit
+        MLX. Fits Mac Mini M4 16GB. Apache 2.0.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  qwen-image-mlx:
+    repo_id: Qwen/Qwen-Image
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: qwen-image
+      mlx_model_name: qwen-image
+      quantize: 8
+      num_inference_steps: 30
+      guidance_scale: 4.0
+    hardware_requirements:
+      min_vram_gb: 18
+      recommended_vram_gb: 24
+      min_ram_gb: 24
+      recommended_ram_gb: 64
+      disk_space_gb: 22
+      supported_devices:
+      - MPS
+      performance_notes: 20B Qwen-Image at 8-bit MLX. Requires Mac Pro M1 32GB+ — too large for M4 16GB.
+        Apache 2.0.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  qwen-image-edit-mlx:
+    repo_id: Qwen/Qwen-Image-Edit
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: qwen-image
+      mlx_model_name: qwen-image-edit
+      quantize: 8
+      num_inference_steps: 30
+      guidance_scale: 4.0
+    hardware_requirements:
+      min_vram_gb: 18
+      recommended_vram_gb: 24
+      min_ram_gb: 24
+      recommended_ram_gb: 64
+      disk_space_gb: 22
+      supported_devices:
+      - MPS
+      performance_notes: Apple Silicon native Qwen-Image-Edit (20B) at 8-bit MLX. Image-editing companion
+        to qwen-image-mlx. M1 32GB+ only. Apache 2.0.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  flux.1-fill-dev-mlx:
+    repo_id: black-forest-labs/FLUX.1-Fill-dev
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: flux1-fill
+      mlx_model_name: dev
+      quantize: 8
+      num_inference_steps: 28
+      guidance_scale: 3.5
+    hardware_requirements:
+      min_vram_gb: 12
+      recommended_vram_gb: 20
+      min_ram_gb: 24
+      recommended_ram_gb: 32
+      disk_space_gb: 14
+      supported_devices:
+      - MPS
+      performance_notes: Apple Silicon native FLUX.1 Fill (inpaint/outpaint) at 8-bit MLX. Requires image=
+        AND mask_image= kwargs in generate(). Gated license.
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  flux.1-redux-dev-mlx:
+    repo_id: black-forest-labs/FLUX.1-Redux-dev
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: flux1-redux
+      mlx_model_name: dev
+      quantize: 8
+      num_inference_steps: 28
+      guidance_scale: 2.5
+    hardware_requirements:
+      min_vram_gb: 12
+      recommended_vram_gb: 20
+      min_ram_gb: 24
+      recommended_ram_gb: 32
+      disk_space_gb: 14
+      supported_devices:
+      - MPS
+      performance_notes: 'Apple Silicon native FLUX.1 Redux at 8-bit MLX. Image-variation model: pass
+        redux_images=[<PIL|path>, ...] to generate(). Gated license.'
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  flux.1-depth-dev-mlx:
+    repo_id: black-forest-labs/FLUX.1-Depth-dev
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: flux1-depth
+      mlx_model_name: dev
+      quantize: 8
+      num_inference_steps: 28
+      guidance_scale: 10.0
+    hardware_requirements:
+      min_vram_gb: 12
+      recommended_vram_gb: 20
+      min_ram_gb: 24
+      recommended_ram_gb: 32
+      disk_space_gb: 14
+      supported_devices:
+      - MPS
+      performance_notes: Apple Silicon native FLUX.1 Depth at 8-bit MLX. Pass image=<source> for depth-conditioned
+        generation; optional depth_image= for precomputed depth map. Gated license.
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  flux.1-controlnet-canny-mlx:
+    repo_id: InstantX/FLUX.1-dev-Controlnet-Canny
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: flux1-controlnet
+      mlx_model_name: canny
+      quantize: 8
+      num_inference_steps: 28
+      guidance_scale: 3.5
+    hardware_requirements:
+      min_vram_gb: 12
+      recommended_vram_gb: 20
+      min_ram_gb: 24
+      recommended_ram_gb: 32
+      disk_space_gb: 16
+      supported_devices:
+      - MPS
+      performance_notes: Apple Silicon native FLUX.1 + InstantX Canny ControlNet at 8-bit MLX. Pass control_image=<canny
+        edge map> and optionally controlnet_strength=. Underlying FLUX.1-dev is gated.
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  flux.1-controlnet-upscaler-mlx:
+    repo_id: jasperai/Flux.1-dev-Controlnet-Upscaler
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: flux1-controlnet
+      mlx_model_name: upscaler
+      quantize: 8
+      num_inference_steps: 28
+      guidance_scale: 3.5
+    hardware_requirements:
+      min_vram_gb: 12
+      recommended_vram_gb: 20
+      min_ram_gb: 24
+      recommended_ram_gb: 32
+      disk_space_gb: 16
+      supported_devices:
+      - MPS
+      performance_notes: Apple Silicon native FLUX.1 + Jasper AI Upscaler ControlNet at 8-bit MLX. Pass
+        control_image=<low-res source>. Great for AI-upscaling photos. Underlying FLUX.1-dev is gated.
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  chroma1-hd:
+    repo_id: lodestones/Chroma1-HD
+    model_type: generic
+    variant: fp16
+    parameters:
+      pipeline_class: ChromaPipeline
+      num_inference_steps: 28
+      guidance_scale: 4.0
+      torch_dtype: bfloat16
+    hardware_requirements:
+      min_vram_gb: 16
+      recommended_vram_gb: 24
+      min_ram_gb: 24
+      recommended_ram_gb: 32
+      disk_space_gb: 18
+      supported_devices:
+      - CUDA
+      - MPS
+      performance_notes: 8.9B FLUX-schnell derivative with custom MMDiT masking + 250M timestep FFN. Apache
+        2.0 (rare for this size). On 16GB Macs use enable_model_cpu_offload via API.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  flux.1-dev-gguf-q2k:
+    repo_id: city96/FLUX.1-dev-gguf
+    model_type: flux
+    variant: gguf-q2k
+    parameters:
+      num_inference_steps: 28
+      guidance_scale: 1.0
+      max_sequence_length: 512
+    hardware_requirements:
+      min_vram_gb: 3
+      recommended_vram_gb: 6
+      min_ram_gb: 8
+      recommended_ram_gb: 16
+      disk_space_gb: 3
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Heavily quantized, lowest quality but very fast
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  flux.1-dev-gguf-q3ks:
+    repo_id: city96/FLUX.1-dev-gguf
+    model_type: flux
+    variant: gguf-q3ks
+    parameters:
+      num_inference_steps: 28
+      guidance_scale: 1.0
+      max_sequence_length: 512
+    hardware_requirements:
+      min_vram_gb: 4
+      recommended_vram_gb: 8
+      min_ram_gb: 10
+      recommended_ram_gb: 16
+      disk_space_gb: 4
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Light quantization, good speed/quality balance
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  flux.1-dev-gguf-q4ks:
+    repo_id: city96/FLUX.1-dev-gguf
+    model_type: flux
+    variant: gguf-q4ks
+    parameters:
+      num_inference_steps: 28
+      guidance_scale: 1.0
+      max_sequence_length: 512
+    hardware_requirements:
+      min_vram_gb: 6
+      recommended_vram_gb: 10
+      min_ram_gb: 12
+      recommended_ram_gb: 20
+      disk_space_gb: 6
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Recommended quantization level - good quality and speed
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  flux.1-dev-gguf-q4-0:
+    repo_id: city96/FLUX.1-dev-gguf
+    model_type: flux
+    variant: gguf-q4-0
+    parameters:
+      num_inference_steps: 28
+      guidance_scale: 1.0
+      max_sequence_length: 512
+    hardware_requirements:
+      min_vram_gb: 6
+      recommended_vram_gb: 10
+      min_ram_gb: 12
+      recommended_ram_gb: 20
+      disk_space_gb: 6
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Q4_0 quantization - fast inference with good quality
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  flux.1-dev-gguf-q4-1:
+    repo_id: city96/FLUX.1-dev-gguf
+    model_type: flux
+    variant: gguf-q4-1
+    parameters:
+      num_inference_steps: 28
+      guidance_scale: 1.0
+      max_sequence_length: 512
+    hardware_requirements:
+      min_vram_gb: 6
+      recommended_vram_gb: 10
+      min_ram_gb: 12
+      recommended_ram_gb: 20
+      disk_space_gb: 6
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Q4_1 quantization - improved Q4_0 with better accuracy
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  flux.1-dev-gguf-q5ks:
+    repo_id: city96/FLUX.1-dev-gguf
+    model_type: flux
+    variant: gguf-q5ks
+    parameters:
+      num_inference_steps: 28
+      guidance_scale: 1.0
+      max_sequence_length: 512
+    hardware_requirements:
+      min_vram_gb: 8
+      recommended_vram_gb: 12
+      min_ram_gb: 16
+      recommended_ram_gb: 24
+      disk_space_gb: 8
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Higher quality quantization, slower but better results
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  flux.1-dev-gguf-q5-0:
+    repo_id: city96/FLUX.1-dev-gguf
+    model_type: flux
+    variant: gguf-q5-0
+    parameters:
+      num_inference_steps: 28
+      guidance_scale: 1.0
+      max_sequence_length: 512
+    hardware_requirements:
+      min_vram_gb: 8
+      recommended_vram_gb: 12
+      min_ram_gb: 16
+      recommended_ram_gb: 24
+      disk_space_gb: 8
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Q5_0 quantization - good balance of size and quality
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  flux.1-dev-gguf-q5-1:
+    repo_id: city96/FLUX.1-dev-gguf
+    model_type: flux
+    variant: gguf-q5-1
+    parameters:
+      num_inference_steps: 28
+      guidance_scale: 1.0
+      max_sequence_length: 512
+    hardware_requirements:
+      min_vram_gb: 8
+      recommended_vram_gb: 12
+      min_ram_gb: 16
+      recommended_ram_gb: 24
+      disk_space_gb: 8
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Q5_1 quantization - improved Q5_0 with better accuracy
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  flux.1-dev-gguf-q6k:
+    repo_id: city96/FLUX.1-dev-gguf
+    model_type: flux
+    variant: gguf-q6k
+    parameters:
+      num_inference_steps: 28
+      guidance_scale: 1.0
+      max_sequence_length: 512
+    hardware_requirements:
+      min_vram_gb: 10
+      recommended_vram_gb: 16
+      min_ram_gb: 20
+      recommended_ram_gb: 32
+      disk_space_gb: 10
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: High quality quantization, close to original
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  flux.1-dev-gguf-q8:
+    repo_id: city96/FLUX.1-dev-gguf
+    model_type: flux
+    variant: gguf-q8
+    parameters:
+      num_inference_steps: 28
+      guidance_scale: 1.0
+      max_sequence_length: 512
+    hardware_requirements:
+      min_vram_gb: 12
+      recommended_vram_gb: 18
+      min_ram_gb: 24
+      recommended_ram_gb: 36
+      disk_space_gb: 12
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Very high quality, minimal quantization loss
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  flux.1-dev-gguf-f16:
+    repo_id: city96/FLUX.1-dev-gguf
+    model_type: flux
+    variant: gguf-f16
+    parameters:
+      num_inference_steps: 28
+      guidance_scale: 1.0
+      max_sequence_length: 512
+    hardware_requirements:
+      min_vram_gb: 16
+      recommended_vram_gb: 24
+      min_ram_gb: 32
+      recommended_ram_gb: 48
+      disk_space_gb: 16
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Full precision, best quality but largest size
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  stable-diffusion-3.5-medium:
+    repo_id: stabilityai/stable-diffusion-3.5-medium
+    model_type: sd3
+    variant: fp16
+    parameters:
+      num_inference_steps: 28
+      guidance_scale: 3.5
+    hardware_requirements:
+      min_vram_gb: 8
+      recommended_vram_gb: 12
+      min_ram_gb: 16
+      recommended_ram_gb: 32
+      disk_space_gb: 10
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Best on NVIDIA RTX 3080+ or Apple M2 Pro+
+  stable-diffusion-xl-base:
+    repo_id: stabilityai/stable-diffusion-xl-base-1.0
+    model_type: sdxl
+    variant: fp16
+    parameters:
+      num_inference_steps: 50
+      guidance_scale: 7.5
+    hardware_requirements:
+      min_vram_gb: 6
+      recommended_vram_gb: 10
+      min_ram_gb: 12
+      recommended_ram_gb: 24
+      disk_space_gb: 7
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Good on NVIDIA RTX 3070+ or Apple M1 Pro+
+  stable-diffusion-1.5:
+    repo_id: runwayml/stable-diffusion-v1-5
+    model_type: sd15
+    variant: fp16
+    parameters:
+      num_inference_steps: 50
+      guidance_scale: 7.5
+    hardware_requirements:
+      min_vram_gb: 4
+      recommended_vram_gb: 6
+      min_ram_gb: 8
+      recommended_ram_gb: 16
+      disk_space_gb: 5
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Runs well on most modern GPUs, including GTX 1060+
+  controlnet-canny-sd15:
+    repo_id: lllyasviel/sd-controlnet-canny
+    model_type: controlnet_sd15
+    base_model: stable-diffusion-1.5
+    controlnet_type: canny
+    variant: fp16
+    parameters:
+      num_inference_steps: 50
+      guidance_scale: 7.5
+      controlnet_conditioning_scale: 1.0
+    hardware_requirements:
+      min_vram_gb: 6
+      recommended_vram_gb: 8
+      min_ram_gb: 12
+      recommended_ram_gb: 20
+      disk_space_gb: 7
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Requires base SD 1.5 model + ControlNet model. Good for edge detection.
+  controlnet-depth-sd15:
+    repo_id: lllyasviel/sd-controlnet-depth
+    model_type: controlnet_sd15
+    base_model: stable-diffusion-1.5
+    controlnet_type: depth
+    variant: fp16
+    parameters:
+      num_inference_steps: 50
+      guidance_scale: 7.5
+      controlnet_conditioning_scale: 1.0
+    hardware_requirements:
+      min_vram_gb: 6
+      recommended_vram_gb: 8
+      min_ram_gb: 12
+      recommended_ram_gb: 20
+      disk_space_gb: 7
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Requires base SD 1.5 model + ControlNet model. Good for depth-based control.
+  controlnet-openpose-sd15:
+    repo_id: lllyasviel/sd-controlnet-openpose
+    model_type: controlnet_sd15
+    base_model: stable-diffusion-1.5
+    controlnet_type: openpose
+    variant: fp16
+    parameters:
+      num_inference_steps: 50
+      guidance_scale: 7.5
+      controlnet_conditioning_scale: 1.0
+    hardware_requirements:
+      min_vram_gb: 6
+      recommended_vram_gb: 8
+      min_ram_gb: 12
+      recommended_ram_gb: 20
+      disk_space_gb: 7
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Requires base SD 1.5 model + ControlNet model. Good for pose control.
+  controlnet-scribble-sd15:
+    repo_id: lllyasviel/sd-controlnet-scribble
+    model_type: controlnet_sd15
+    base_model: stable-diffusion-1.5
+    controlnet_type: scribble
+    variant: fp16
+    parameters:
+      num_inference_steps: 50
+      guidance_scale: 7.5
+      controlnet_conditioning_scale: 1.0
+    hardware_requirements:
+      min_vram_gb: 6
+      recommended_vram_gb: 8
+      min_ram_gb: 12
+      recommended_ram_gb: 20
+      disk_space_gb: 7
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Requires base SD 1.5 model + ControlNet model. Good for sketch-based control.
+  controlnet-canny-sdxl:
+    repo_id: diffusers/controlnet-canny-sdxl-1.0
+    model_type: controlnet_sdxl
+    base_model: stable-diffusion-xl-base
+    controlnet_type: canny
+    variant: fp16
+    parameters:
+      num_inference_steps: 50
+      guidance_scale: 7.5
+      controlnet_conditioning_scale: 1.0
+    hardware_requirements:
+      min_vram_gb: 8
+      recommended_vram_gb: 12
+      min_ram_gb: 16
+      recommended_ram_gb: 28
+      disk_space_gb: 10
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Requires base SDXL model + ControlNet model. Good for edge detection with SDXL
+        quality.
+  controlnet-depth-sdxl:
+    repo_id: diffusers/controlnet-depth-sdxl-1.0
+    model_type: controlnet_sdxl
+    base_model: stable-diffusion-xl-base
+    controlnet_type: depth
+    variant: fp16
+    parameters:
+      num_inference_steps: 50
+      guidance_scale: 7.5
+      controlnet_conditioning_scale: 1.0
+    hardware_requirements:
+      min_vram_gb: 8
+      recommended_vram_gb: 12
+      min_ram_gb: 16
+      recommended_ram_gb: 28
+      disk_space_gb: 10
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Requires base SDXL model + ControlNet model. Good for depth-based control with
+        SDXL quality.
+  stable-diffusion-3.5-large:
+    repo_id: stabilityai/stable-diffusion-3.5-large
+    model_type: sd3
+    variant: fp16
+    parameters:
+      num_inference_steps: 28
+      guidance_scale: 3.5
+    hardware_requirements:
+      min_vram_gb: 12
+      recommended_vram_gb: 16
+      min_ram_gb: 24
+      recommended_ram_gb: 48
+      disk_space_gb: 16
+      supported_devices:
+      - CUDA
+      - MPS
+      performance_notes: Large SD3.5 model. Higher quality than medium variant.
+    license_info:
+      type: Stability AI Community License
+      requires_agreement: true
+      commercial_use: false
+  stable-diffusion-3.5-large-turbo:
+    repo_id: stabilityai/stable-diffusion-3.5-large-turbo
+    model_type: sd3
+    variant: fp16
+    parameters:
+      num_inference_steps: 4
+      guidance_scale: 0.0
+    hardware_requirements:
+      min_vram_gb: 12
+      recommended_vram_gb: 16
+      min_ram_gb: 24
+      recommended_ram_gb: 48
+      disk_space_gb: 16
+      supported_devices:
+      - CUDA
+      - MPS
+      performance_notes: Turbo variant with 4-step generation. Fast inference.
+    license_info:
+      type: Stability AI Community License
+      requires_agreement: true
+      commercial_use: false
+  realvisxl-v4:
+    repo_id: SG161222/RealVisXL_V4.0
+    model_type: sdxl
+    variant: fp16
+    parameters:
+      num_inference_steps: 30
+      guidance_scale: 5.0
+    hardware_requirements:
+      min_vram_gb: 6
+      recommended_vram_gb: 10
+      min_ram_gb: 12
+      recommended_ram_gb: 24
+      disk_space_gb: 7
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Photorealistic SDXL finetune. Very popular community model.
+    license_info:
+      type: CreativeML Open RAIL++-M
+      requires_agreement: false
+      commercial_use: true
+  dreamshaper:
+    repo_id: Lykon/DreamShaper
+    model_type: sd15
+    variant: fp16
+    parameters:
+      num_inference_steps: 30
+      guidance_scale: 7.0
+    hardware_requirements:
+      min_vram_gb: 4
+      recommended_vram_gb: 6
+      min_ram_gb: 8
+      recommended_ram_gb: 16
+      disk_space_gb: 5
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Popular community SD 1.5 model. Runs on most GPUs.
+    license_info:
+      type: CreativeML Open RAIL-M
+      requires_agreement: false
+      commercial_use: true
+  realistic-vision-v6:
+    repo_id: SG161222/Realistic_Vision_V6.0_B1_noVAE
+    model_type: sd15
+    variant: fp16
+    parameters:
+      num_inference_steps: 30
+      guidance_scale: 5.0
+    hardware_requirements:
+      min_vram_gb: 4
+      recommended_vram_gb: 6
+      min_ram_gb: 8
+      recommended_ram_gb: 16
+      disk_space_gb: 5
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Photorealistic SD 1.5 model. Great for portraits.
+    license_info:
+      type: CreativeML Open RAIL-M
+      requires_agreement: false
+      commercial_use: true
+  sdxl-turbo:
+    repo_id: stabilityai/sdxl-turbo
+    model_type: sdxl
+    variant: fp16
+    parameters:
+      num_inference_steps: 1
+      guidance_scale: 0.0
+    hardware_requirements:
+      min_vram_gb: 6
+      recommended_vram_gb: 10
+      min_ram_gb: 12
+      recommended_ram_gb: 24
+      disk_space_gb: 7
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Distilled SDXL. Single-step inference, extremely fast.
+    license_info:
+      type: Stability AI Non-Commercial Research Community License
+      requires_agreement: true
+      commercial_use: false
+  sdxl-lightning-4step:
+    repo_id: ByteDance/SDXL-Lightning
+    model_type: sdxl
+    variant: fp16
+    allow_patterns:
+    - sdxl_lightning_4step.safetensors
+    parameters:
+      num_inference_steps: 4
+      guidance_scale: 0.0
+      single_file: sdxl_lightning_4step.safetensors
+      scheduler_class: EulerDiscreteScheduler
+      scheduler_kwargs:
+        timestep_spacing: trailing
+    hardware_requirements:
+      min_vram_gb: 6
+      recommended_vram_gb: 10
+      min_ram_gb: 12
+      recommended_ram_gb: 24
+      disk_space_gb: 7
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Lightning-fast SDXL with 4 steps.
+    license_info:
+      type: OpenRAIL++
+      requires_agreement: false
+      commercial_use: true
+  flux.1-fill-dev:
+    repo_id: black-forest-labs/FLUX.1-Fill-dev
+    model_type: flux
+    variant: fp16
+    parameters:
+      pipeline_class: FluxFillPipeline
+      num_inference_steps: 28
+      guidance_scale: 30.0
+      max_sequence_length: 512
+    hardware_requirements:
+      min_vram_gb: 20
+      recommended_vram_gb: 24
+      min_ram_gb: 32
+      recommended_ram_gb: 64
+      disk_space_gb: 24
+      supported_devices:
+      - CUDA
+      performance_notes: FLUX inpainting/outpainting model.
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  flux.1-canny-dev:
+    repo_id: black-forest-labs/FLUX.1-Canny-dev
+    model_type: flux
+    variant: fp16
+    parameters:
+      pipeline_class: FluxControlPipeline
+      num_inference_steps: 28
+      guidance_scale: 30.0
+      max_sequence_length: 512
+    hardware_requirements:
+      min_vram_gb: 20
+      recommended_vram_gb: 24
+      min_ram_gb: 32
+      recommended_ram_gb: 64
+      disk_space_gb: 24
+      supported_devices:
+      - CUDA
+      performance_notes: FLUX canny edge control model.
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  flux.1-depth-dev:
+    repo_id: black-forest-labs/FLUX.1-Depth-dev
+    model_type: flux
+    variant: fp16
+    parameters:
+      pipeline_class: FluxControlPipeline
+      num_inference_steps: 28
+      guidance_scale: 10.0
+      max_sequence_length: 512
+    hardware_requirements:
+      min_vram_gb: 20
+      recommended_vram_gb: 24
+      min_ram_gb: 32
+      recommended_ram_gb: 64
+      disk_space_gb: 24
+      supported_devices:
+      - CUDA
+      performance_notes: FLUX depth control model.
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  flux.2-dev:
+    repo_id: black-forest-labs/FLUX.2-dev
+    model_type: generic
+    variant: fp16
+    allow_patterns:
+    - model_index.json
+    - scheduler/*
+    - text_encoder/*
+    - text_encoder_2/*
+    - tokenizer/*
+    - tokenizer_2/*
+    - transformer/*
+    - vae/*
+    parameters:
+      pipeline_class: Flux2Pipeline
+      num_inference_steps: 28
+      guidance_scale: 3.5
+      torch_dtype: bfloat16
+      enable_cpu_offload: true
+    hardware_requirements:
+      min_vram_gb: 14
+      recommended_vram_gb: 24
+      min_ram_gb: 32
+      recommended_ram_gb: 64
+      disk_space_gb: 36
+      supported_devices:
+      - CUDA
+      performance_notes: FLUX.2 32B parameter model. Requires CPU offloading on consumer GPUs. Requires
+        diffusers from source.
+    license_info:
+      type: FLUX.2 Dev Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  flux.2-klein-4b:
+    repo_id: black-forest-labs/FLUX.2-klein-4B
+    model_type: generic
+    variant: fp16
+    parameters:
+      pipeline_class: Flux2KleinPipeline
+      num_inference_steps: 28
+      guidance_scale: 3.5
+      torch_dtype: bfloat16
+    hardware_requirements:
+      min_vram_gb: 10
+      recommended_vram_gb: 16
+      min_ram_gb: 16
+      recommended_ram_gb: 32
+      disk_space_gb: 10
+      supported_devices:
+      - CUDA
+      - MPS
+      performance_notes: Compact 4B FLUX.2 model. Apache 2.0 licensed. Requires diffusers from source.
+        MPS uses bfloat16 (PyTorch 2.3+).
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  z-image-turbo:
+    repo_id: Tongyi-MAI/Z-Image-Turbo
+    model_type: generic
+    variant: fp16
+    parameters:
+      pipeline_class: ZImagePipeline
+      num_inference_steps: 8
+      guidance_scale: 5.0
+      torch_dtype: bfloat16
+    hardware_requirements:
+      min_vram_gb: 10
+      recommended_vram_gb: 16
+      min_ram_gb: 16
+      recommended_ram_gb: 32
+      disk_space_gb: 14
+      supported_devices:
+      - CUDA
+      performance_notes: Alibaba 6B model. 8-step turbo generation. Bilingual Chinese/English. Requires
+        diffusers from source.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  sana-1.5:
+    repo_id: Efficient-Large-Model/SANA1.5_1.6B_1024px_diffusers
+    model_type: generic
+    variant: fp16
+    parameters:
+      pipeline_class: SanaPipeline
+      num_inference_steps: 20
+      guidance_scale: 5.0
+      torch_dtype: float16
+    hardware_requirements:
+      min_vram_gb: 8
+      recommended_vram_gb: 12
+      min_ram_gb: 16
+      recommended_ram_gb: 32
+      disk_space_gb: 4
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: NVIDIA 1.6B model. Very efficient, competitive with 12B models.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  cogview4:
+    repo_id: THUDM/CogView4-6B
+    model_type: generic
+    parameters:
+      pipeline_class: CogView4Pipeline
+      num_inference_steps: 50
+      guidance_scale: 3.5
+      torch_dtype: bfloat16
+    hardware_requirements:
+      min_vram_gb: 12
+      recommended_vram_gb: 18
+      min_ram_gb: 24
+      recommended_ram_gb: 32
+      disk_space_gb: 14
+      supported_devices:
+      - CUDA
+      - MPS
+      performance_notes: Zhipu AI 6B model with GLM-4 text encoder. Bilingual Chinese/English. MPS requires
+        24GB+ unified memory (no CPU offload on Apple Silicon).
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  kolors:
+    repo_id: Kwai-Kolors/Kolors-diffusers
+    model_type: generic
+    variant: fp16
+    parameters:
+      pipeline_class: KolorsPipeline
+      num_inference_steps: 50
+      guidance_scale: 5.0
+      torch_dtype: float16
+      enable_cpu_offload: true
+      vae_upcast_float32: true
+    hardware_requirements:
+      min_vram_gb: 8
+      recommended_vram_gb: 18
+      min_ram_gb: 32
+      recommended_ram_gb: 32
+      disk_space_gb: 18
+      supported_devices:
+      - CUDA
+      - MPS
+      performance_notes: Kuaishou 8.6B model with ChatGLM3 encoder. Bilingual Chinese/English. Midjourney-v6
+        level quality. MPS requires 32GB unified memory (no CPU offload on Apple Silicon).
+    license_info:
+      type: Kolors License
+      requires_agreement: false
+      commercial_use: true
+  hunyuan-dit:
+    repo_id: Tencent-Hunyuan/HunyuanDiT-v1.2-Diffusers
+    model_type: generic
+    variant: fp16
+    parameters:
+      pipeline_class: HunyuanDiTPipeline
+      num_inference_steps: 50
+      guidance_scale: 5.0
+      torch_dtype: float16
+      enable_cpu_offload: true
+    hardware_requirements:
+      min_vram_gb: 6
+      recommended_vram_gb: 16
+      min_ram_gb: 24
+      recommended_ram_gb: 32
+      disk_space_gb: 12
+      supported_devices:
+      - CUDA
+      - MPS
+      performance_notes: Tencent 1.5B model with dual text encoders (mT5 + bilingual CLIP). Fine-grained
+        Chinese understanding. MPS requires 24GB+ unified memory (no CPU offload on Apple Silicon).
+    license_info:
+      type: Tencent Hunyuan Community License
+      requires_agreement: false
+      commercial_use: true
+  lumina-2:
+    repo_id: Alpha-VLLM/Lumina-Image-2.0
+    model_type: generic
+    variant: fp16
+    parameters:
+      pipeline_class: Lumina2Pipeline
+      num_inference_steps: 30
+      guidance_scale: 4.0
+      torch_dtype: bfloat16
+      enable_cpu_offload: true
+    hardware_requirements:
+      min_vram_gb: 8
+      recommended_vram_gb: 16
+      min_ram_gb: 16
+      recommended_ram_gb: 32
+      disk_space_gb: 6
+      supported_devices:
+      - CUDA
+      - MPS
+      performance_notes: Alpha-VLLM 2B model. Unified text+image token architecture. Works on Apple Silicon
+        (tight on 16GB).
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  pixart-sigma:
+    repo_id: PixArt-alpha/PixArt-Sigma-XL-2-1024-MS
+    model_type: generic
+    variant: fp16
+    parameters:
+      pipeline_class: PixArtSigmaPipeline
+      num_inference_steps: 20
+      guidance_scale: 4.5
+      torch_dtype: float16
+    hardware_requirements:
+      min_vram_gb: 6
+      recommended_vram_gb: 10
+      min_ram_gb: 8
+      recommended_ram_gb: 16
+      disk_space_gb: 3
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: Very lightweight 0.6B model. 4K capable. Runs well on MPS with float16.
+    license_info:
+      type: PixArt Open License
+      requires_agreement: false
+      commercial_use: true
+  auraflow:
+    repo_id: fal/AuraFlow-v0.3
+    model_type: generic
+    variant: fp16
+    allow_patterns:
+    - model_index.json
+    - scheduler/*
+    - text_encoder/*
+    - tokenizer/*
+    - transformer/*
+    - vae/*
+    parameters:
+      pipeline_class: AuraFlowPipeline
+      num_inference_steps: 50
+      guidance_scale: 3.5
+      torch_dtype: float16
+      enable_cpu_offload: true
+    hardware_requirements:
+      min_vram_gb: 12
+      recommended_vram_gb: 20
+      min_ram_gb: 16
+      recommended_ram_gb: 32
+      disk_space_gb: 14
+      supported_devices:
+      - CUDA
+      performance_notes: Fal 6.8B model. Largest Apache 2.0 licensed text-to-image model.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  omnigen:
+    repo_id: Shitao/OmniGen-v1-diffusers
+    model_type: generic
+    variant: fp16
+    parameters:
+      pipeline_class: OmniGenPipeline
+      num_inference_steps: 50
+      guidance_scale: 2.5
+      torch_dtype: bfloat16
+      enable_cpu_offload: true
+      supports_negative_prompt: false
+    hardware_requirements:
+      min_vram_gb: 12
+      recommended_vram_gb: 18
+      min_ram_gb: 16
+      recommended_ram_gb: 32
+      disk_space_gb: 10
+      supported_devices:
+      - CUDA
+      performance_notes: BAAI 3.8B unified model. Text-to-image, editing, subject-driven generation without
+        extra plugins.
+    license_info:
+      type: MIT
+      requires_agreement: false
+      commercial_use: true

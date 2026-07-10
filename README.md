@@ -89,7 +89,7 @@ Most models work **without any token** -- just install and go. See [Hugging Face
 
 - **🏗️ Strategy Architecture**: Clean per-model strategy pattern (SD1.5, SDXL, FLUX, SD3, ControlNet, Video, HiDream, GGUF, MLX, Generic)
 - **🌐 60+ Models**: FLUX.1/2, SD 3.5, SDXL Lightning, CogView4, Kolors, SANA, PixArt-Sigma, Z-Image, Qwen-Image, Chroma1, and more
-- **🔌 Generic Pipeline**: Add new diffusers models via registry config alone -- no code changes needed
+- **🔌 Generic Pipeline**: Add new diffusers models via registry config alone -- no code changes needed. Built-in models live in [`models.yaml`](ollamadiffuser/core/config/models.yaml) (data, not code) — contributing a model is a pure-data PR against that file.
 - **🖼️ img2img & Inpainting**: Image-to-image and inpainting support across SD1.5, SDXL, and the API/Web UI
 - **⚡ Async API**: Non-blocking FastAPI server using `asyncio.to_thread` for GPU operations
 - **🎲 Random Seeds**: Reproducible generation with explicit seeds, random by default

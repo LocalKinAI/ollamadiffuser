@@ -1,0 +1,1637 @@
+{
+  "auraflow": {
+    "allow_patterns": [
+      "model_index.json",
+      "scheduler/*",
+      "text_encoder/*",
+      "tokenizer/*",
+      "transformer/*",
+      "vae/*"
+    ],
+    "hardware_requirements": {
+      "disk_space_gb": 14,
+      "min_ram_gb": 16,
+      "min_vram_gb": 12,
+      "performance_notes": "Fal 6.8B model. Largest Apache 2.0 licensed text-to-image model.",
+      "recommended_ram_gb": 32,
+      "recommended_vram_gb": 20,
+      "supported_devices": [
+        "CUDA"
+      ]
+    },
+    "license_info": {
+      "commercial_use": true,
+      "requires_agreement": false,
+      "type": "Apache 2.0"
+    },
+    "model_type": "generic",
+    "parameters": {
+      "enable_cpu_offload": true,
+      "guidance_scale": 3.5,
+      "num_inference_steps": 50,
+      "pipeline_class": "AuraFlowPipeline",
+      "torch_dtype": "float16"
+    },
+    "repo_id": "fal/AuraFlow-v0.3",
+    "variant": "fp16"
+  },
+  "chroma1-hd": {
+    "hardware_requirements": {
+      "disk_space_gb": 18,
+      "min_ram_gb": 24,
+      "min_vram_gb": 16,
+      "performance_notes": "8.9B FLUX-schnell derivative with custom MMDiT masking + 250M timestep FFN. Apache 2.0 (rare for this size). On 16GB Macs use enable_model_cpu_offload via API.",
+      "recommended_ram_gb": 32,
+      "recommended_vram_gb": 24,
+      "supported_devices": [
+        "CUDA",
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": true,
+      "requires_agreement": false,
+      "type": "Apache 2.0"
+    },
+    "model_type": "generic",
+    "parameters": {
+      "guidance_scale": 4.0,
+      "num_inference_steps": 28,
+      "pipeline_class": "ChromaPipeline",
+      "torch_dtype": "bfloat16"
+    },
+    "repo_id": "lodestones/Chroma1-HD",
+    "variant": "fp16"
+  },
+  "cogview4": {
+    "hardware_requirements": {
+      "disk_space_gb": 14,
+      "min_ram_gb": 24,
+      "min_vram_gb": 12,
+      "performance_notes": "Zhipu AI 6B model with GLM-4 text encoder. Bilingual Chinese/English. MPS requires 24GB+ unified memory (no CPU offload on Apple Silicon).",
+      "recommended_ram_gb": 32,
+      "recommended_vram_gb": 18,
+      "supported_devices": [
+        "CUDA",
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": true,
+      "requires_agreement": false,
+      "type": "Apache 2.0"
+    },
+    "model_type": "generic",
+    "parameters": {
+      "guidance_scale": 3.5,
+      "num_inference_steps": 50,
+      "pipeline_class": "CogView4Pipeline",
+      "torch_dtype": "bfloat16"
+    },
+    "repo_id": "THUDM/CogView4-6B"
+  },
+  "controlnet-canny-sd15": {
+    "base_model": "stable-diffusion-1.5",
+    "controlnet_type": "canny",
+    "hardware_requirements": {
+      "disk_space_gb": 7,
+      "min_ram_gb": 12,
+      "min_vram_gb": 6,
+      "performance_notes": "Requires base SD 1.5 model + ControlNet model. Good for edge detection.",
+      "recommended_ram_gb": 20,
+      "recommended_vram_gb": 8,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "model_type": "controlnet_sd15",
+    "parameters": {
+      "controlnet_conditioning_scale": 1.0,
+      "guidance_scale": 7.5,
+      "num_inference_steps": 50
+    },
+    "repo_id": "lllyasviel/sd-controlnet-canny",
+    "variant": "fp16"
+  },
+  "controlnet-canny-sdxl": {
+    "base_model": "stable-diffusion-xl-base",
+    "controlnet_type": "canny",
+    "hardware_requirements": {
+      "disk_space_gb": 10,
+      "min_ram_gb": 16,
+      "min_vram_gb": 8,
+      "performance_notes": "Requires base SDXL model + ControlNet model. Good for edge detection with SDXL quality.",
+      "recommended_ram_gb": 28,
+      "recommended_vram_gb": 12,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "model_type": "controlnet_sdxl",
+    "parameters": {
+      "controlnet_conditioning_scale": 1.0,
+      "guidance_scale": 7.5,
+      "num_inference_steps": 50
+    },
+    "repo_id": "diffusers/controlnet-canny-sdxl-1.0",
+    "variant": "fp16"
+  },
+  "controlnet-depth-sd15": {
+    "base_model": "stable-diffusion-1.5",
+    "controlnet_type": "depth",
+    "hardware_requirements": {
+      "disk_space_gb": 7,
+      "min_ram_gb": 12,
+      "min_vram_gb": 6,
+      "performance_notes": "Requires base SD 1.5 model + ControlNet model. Good for depth-based control.",
+      "recommended_ram_gb": 20,
+      "recommended_vram_gb": 8,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "model_type": "controlnet_sd15",
+    "parameters": {
+      "controlnet_conditioning_scale": 1.0,
+      "guidance_scale": 7.5,
+      "num_inference_steps": 50
+    },
+    "repo_id": "lllyasviel/sd-controlnet-depth",
+    "variant": "fp16"
+  },
+  "controlnet-depth-sdxl": {
+    "base_model": "stable-diffusion-xl-base",
+    "controlnet_type": "depth",
+    "hardware_requirements": {
+      "disk_space_gb": 10,
+      "min_ram_gb": 16,
+      "min_vram_gb": 8,
+      "performance_notes": "Requires base SDXL model + ControlNet model. Good for depth-based control with SDXL quality.",
+      "recommended_ram_gb": 28,
+      "recommended_vram_gb": 12,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "model_type": "controlnet_sdxl",
+    "parameters": {
+      "controlnet_conditioning_scale": 1.0,
+      "guidance_scale": 7.5,
+      "num_inference_steps": 50
+    },
+    "repo_id": "diffusers/controlnet-depth-sdxl-1.0",
+    "variant": "fp16"
+  },
+  "controlnet-openpose-sd15": {
+    "base_model": "stable-diffusion-1.5",
+    "controlnet_type": "openpose",
+    "hardware_requirements": {
+      "disk_space_gb": 7,
+      "min_ram_gb": 12,
+      "min_vram_gb": 6,
+      "performance_notes": "Requires base SD 1.5 model + ControlNet model. Good for pose control.",
+      "recommended_ram_gb": 20,
+      "recommended_vram_gb": 8,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "model_type": "controlnet_sd15",
+    "parameters": {
+      "controlnet_conditioning_scale": 1.0,
+      "guidance_scale": 7.5,
+      "num_inference_steps": 50
+    },
+    "repo_id": "lllyasviel/sd-controlnet-openpose",
+    "variant": "fp16"
+  },
+  "controlnet-scribble-sd15": {
+    "base_model": "stable-diffusion-1.5",
+    "controlnet_type": "scribble",
+    "hardware_requirements": {
+      "disk_space_gb": 7,
+      "min_ram_gb": 12,
+      "min_vram_gb": 6,
+      "performance_notes": "Requires base SD 1.5 model + ControlNet model. Good for sketch-based control.",
+      "recommended_ram_gb": 20,
+      "recommended_vram_gb": 8,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "model_type": "controlnet_sd15",
+    "parameters": {
+      "controlnet_conditioning_scale": 1.0,
+      "guidance_scale": 7.5,
+      "num_inference_steps": 50
+    },
+    "repo_id": "lllyasviel/sd-controlnet-scribble",
+    "variant": "fp16"
+  },
+  "dreamshaper": {
+    "hardware_requirements": {
+      "disk_space_gb": 5,
+      "min_ram_gb": 8,
+      "min_vram_gb": 4,
+      "performance_notes": "Popular community SD 1.5 model. Runs on most GPUs.",
+      "recommended_ram_gb": 16,
+      "recommended_vram_gb": 6,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "license_info": {
+      "commercial_use": true,
+      "requires_agreement": false,
+      "type": "CreativeML Open RAIL-M"
+    },
+    "model_type": "sd15",
+    "parameters": {
+      "guidance_scale": 7.0,
+      "num_inference_steps": 30
+    },
+    "repo_id": "Lykon/DreamShaper",
+    "variant": "fp16"
+  },
+  "flux.1-canny-dev": {
+    "hardware_requirements": {
+      "disk_space_gb": 24,
+      "min_ram_gb": 32,
+      "min_vram_gb": 20,
+      "performance_notes": "FLUX canny edge control model.",
+      "recommended_ram_gb": 64,
+      "recommended_vram_gb": 24,
+      "supported_devices": [
+        "CUDA"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.1 Non-Commercial License"
+    },
+    "model_type": "flux",
+    "parameters": {
+      "guidance_scale": 30.0,
+      "max_sequence_length": 512,
+      "num_inference_steps": 28,
+      "pipeline_class": "FluxControlPipeline"
+    },
+    "repo_id": "black-forest-labs/FLUX.1-Canny-dev",
+    "variant": "fp16"
+  },
+  "flux.1-controlnet-canny-mlx": {
+    "hardware_requirements": {
+      "disk_space_gb": 16,
+      "min_ram_gb": 24,
+      "min_vram_gb": 12,
+      "performance_notes": "Apple Silicon native FLUX.1 + InstantX Canny ControlNet at 8-bit MLX. Pass control_image=<canny edge map> and optionally controlnet_strength=. Underlying FLUX.1-dev is gated.",
+      "recommended_ram_gb": 32,
+      "recommended_vram_gb": 20,
+      "supported_devices": [
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.1 Non-Commercial License"
+    },
+    "model_type": "mlx",
+    "parameters": {
+      "guidance_scale": 3.5,
+      "mlx_model_name": "canny",
+      "mlx_variant": "flux1-controlnet",
+      "num_inference_steps": 28,
+      "quantize": 8
+    },
+    "repo_id": "InstantX/FLUX.1-dev-Controlnet-Canny",
+    "variant": "mlx-q8"
+  },
+  "flux.1-controlnet-upscaler-mlx": {
+    "hardware_requirements": {
+      "disk_space_gb": 16,
+      "min_ram_gb": 24,
+      "min_vram_gb": 12,
+      "performance_notes": "Apple Silicon native FLUX.1 + Jasper AI Upscaler ControlNet at 8-bit MLX. Pass control_image=<low-res source>. Great for AI-upscaling photos. Underlying FLUX.1-dev is gated.",
+      "recommended_ram_gb": 32,
+      "recommended_vram_gb": 20,
+      "supported_devices": [
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.1 Non-Commercial License"
+    },
+    "model_type": "mlx",
+    "parameters": {
+      "guidance_scale": 3.5,
+      "mlx_model_name": "upscaler",
+      "mlx_variant": "flux1-controlnet",
+      "num_inference_steps": 28,
+      "quantize": 8
+    },
+    "repo_id": "jasperai/Flux.1-dev-Controlnet-Upscaler",
+    "variant": "mlx-q8"
+  },
+  "flux.1-depth-dev": {
+    "hardware_requirements": {
+      "disk_space_gb": 24,
+      "min_ram_gb": 32,
+      "min_vram_gb": 20,
+      "performance_notes": "FLUX depth control model.",
+      "recommended_ram_gb": 64,
+      "recommended_vram_gb": 24,
+      "supported_devices": [
+        "CUDA"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.1 Non-Commercial License"
+    },
+    "model_type": "flux",
+    "parameters": {
+      "guidance_scale": 10.0,
+      "max_sequence_length": 512,
+      "num_inference_steps": 28,
+      "pipeline_class": "FluxControlPipeline"
+    },
+    "repo_id": "black-forest-labs/FLUX.1-Depth-dev",
+    "variant": "fp16"
+  },
+  "flux.1-depth-dev-mlx": {
+    "hardware_requirements": {
+      "disk_space_gb": 14,
+      "min_ram_gb": 24,
+      "min_vram_gb": 12,
+      "performance_notes": "Apple Silicon native FLUX.1 Depth at 8-bit MLX. Pass image=<source> for depth-conditioned generation; optional depth_image= for precomputed depth map. Gated license.",
+      "recommended_ram_gb": 32,
+      "recommended_vram_gb": 20,
+      "supported_devices": [
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.1 Non-Commercial License"
+    },
+    "model_type": "mlx",
+    "parameters": {
+      "guidance_scale": 10.0,
+      "mlx_model_name": "dev",
+      "mlx_variant": "flux1-depth",
+      "num_inference_steps": 28,
+      "quantize": 8
+    },
+    "repo_id": "black-forest-labs/FLUX.1-Depth-dev",
+    "variant": "mlx-q8"
+  },
+  "flux.1-dev": {
+    "hardware_requirements": {
+      "disk_space_gb": 24,
+      "min_ram_gb": 32,
+      "min_vram_gb": 20,
+      "performance_notes": "Requires significant VRAM. Consider using smaller variants for lower-end hardware.",
+      "recommended_ram_gb": 64,
+      "recommended_vram_gb": 24,
+      "supported_devices": [
+        "CUDA"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.1 Non-Commercial License"
+    },
+    "model_type": "flux",
+    "parameters": {
+      "guidance_scale": 3.0,
+      "max_sequence_length": 512,
+      "num_inference_steps": 20
+    },
+    "repo_id": "black-forest-labs/FLUX.1-dev",
+    "variant": "fp16"
+  },
+  "flux.1-dev-gguf-f16": {
+    "hardware_requirements": {
+      "disk_space_gb": 16,
+      "min_ram_gb": 32,
+      "min_vram_gb": 16,
+      "performance_notes": "Full precision, best quality but largest size",
+      "recommended_ram_gb": 48,
+      "recommended_vram_gb": 24,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.1 Non-Commercial License"
+    },
+    "model_type": "flux",
+    "parameters": {
+      "guidance_scale": 1.0,
+      "max_sequence_length": 512,
+      "num_inference_steps": 28
+    },
+    "repo_id": "city96/FLUX.1-dev-gguf",
+    "variant": "gguf-f16"
+  },
+  "flux.1-dev-gguf-q2k": {
+    "hardware_requirements": {
+      "disk_space_gb": 3,
+      "min_ram_gb": 8,
+      "min_vram_gb": 3,
+      "performance_notes": "Heavily quantized, lowest quality but very fast",
+      "recommended_ram_gb": 16,
+      "recommended_vram_gb": 6,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.1 Non-Commercial License"
+    },
+    "model_type": "flux",
+    "parameters": {
+      "guidance_scale": 1.0,
+      "max_sequence_length": 512,
+      "num_inference_steps": 28
+    },
+    "repo_id": "city96/FLUX.1-dev-gguf",
+    "variant": "gguf-q2k"
+  },
+  "flux.1-dev-gguf-q3ks": {
+    "hardware_requirements": {
+      "disk_space_gb": 4,
+      "min_ram_gb": 10,
+      "min_vram_gb": 4,
+      "performance_notes": "Light quantization, good speed/quality balance",
+      "recommended_ram_gb": 16,
+      "recommended_vram_gb": 8,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.1 Non-Commercial License"
+    },
+    "model_type": "flux",
+    "parameters": {
+      "guidance_scale": 1.0,
+      "max_sequence_length": 512,
+      "num_inference_steps": 28
+    },
+    "repo_id": "city96/FLUX.1-dev-gguf",
+    "variant": "gguf-q3ks"
+  },
+  "flux.1-dev-gguf-q4-0": {
+    "hardware_requirements": {
+      "disk_space_gb": 6,
+      "min_ram_gb": 12,
+      "min_vram_gb": 6,
+      "performance_notes": "Q4_0 quantization - fast inference with good quality",
+      "recommended_ram_gb": 20,
+      "recommended_vram_gb": 10,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.1 Non-Commercial License"
+    },
+    "model_type": "flux",
+    "parameters": {
+      "guidance_scale": 1.0,
+      "max_sequence_length": 512,
+      "num_inference_steps": 28
+    },
+    "repo_id": "city96/FLUX.1-dev-gguf",
+    "variant": "gguf-q4-0"
+  },
+  "flux.1-dev-gguf-q4-1": {
+    "hardware_requirements": {
+      "disk_space_gb": 6,
+      "min_ram_gb": 12,
+      "min_vram_gb": 6,
+      "performance_notes": "Q4_1 quantization - improved Q4_0 with better accuracy",
+      "recommended_ram_gb": 20,
+      "recommended_vram_gb": 10,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.1 Non-Commercial License"
+    },
+    "model_type": "flux",
+    "parameters": {
+      "guidance_scale": 1.0,
+      "max_sequence_length": 512,
+      "num_inference_steps": 28
+    },
+    "repo_id": "city96/FLUX.1-dev-gguf",
+    "variant": "gguf-q4-1"
+  },
+  "flux.1-dev-gguf-q4ks": {
+    "hardware_requirements": {
+      "disk_space_gb": 6,
+      "min_ram_gb": 12,
+      "min_vram_gb": 6,
+      "performance_notes": "Recommended quantization level - good quality and speed",
+      "recommended_ram_gb": 20,
+      "recommended_vram_gb": 10,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.1 Non-Commercial License"
+    },
+    "model_type": "flux",
+    "parameters": {
+      "guidance_scale": 1.0,
+      "max_sequence_length": 512,
+      "num_inference_steps": 28
+    },
+    "repo_id": "city96/FLUX.1-dev-gguf",
+    "variant": "gguf-q4ks"
+  },
+  "flux.1-dev-gguf-q5-0": {
+    "hardware_requirements": {
+      "disk_space_gb": 8,
+      "min_ram_gb": 16,
+      "min_vram_gb": 8,
+      "performance_notes": "Q5_0 quantization - good balance of size and quality",
+      "recommended_ram_gb": 24,
+      "recommended_vram_gb": 12,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.1 Non-Commercial License"
+    },
+    "model_type": "flux",
+    "parameters": {
+      "guidance_scale": 1.0,
+      "max_sequence_length": 512,
+      "num_inference_steps": 28
+    },
+    "repo_id": "city96/FLUX.1-dev-gguf",
+    "variant": "gguf-q5-0"
+  },
+  "flux.1-dev-gguf-q5-1": {
+    "hardware_requirements": {
+      "disk_space_gb": 8,
+      "min_ram_gb": 16,
+      "min_vram_gb": 8,
+      "performance_notes": "Q5_1 quantization - improved Q5_0 with better accuracy",
+      "recommended_ram_gb": 24,
+      "recommended_vram_gb": 12,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.1 Non-Commercial License"
+    },
+    "model_type": "flux",
+    "parameters": {
+      "guidance_scale": 1.0,
+      "max_sequence_length": 512,
+      "num_inference_steps": 28
+    },
+    "repo_id": "city96/FLUX.1-dev-gguf",
+    "variant": "gguf-q5-1"
+  },
+  "flux.1-dev-gguf-q5ks": {
+    "hardware_requirements": {
+      "disk_space_gb": 8,
+      "min_ram_gb": 16,
+      "min_vram_gb": 8,
+      "performance_notes": "Higher quality quantization, slower but better results",
+      "recommended_ram_gb": 24,
+      "recommended_vram_gb": 12,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.1 Non-Commercial License"
+    },
+    "model_type": "flux",
+    "parameters": {
+      "guidance_scale": 1.0,
+      "max_sequence_length": 512,
+      "num_inference_steps": 28
+    },
+    "repo_id": "city96/FLUX.1-dev-gguf",
+    "variant": "gguf-q5ks"
+  },
+  "flux.1-dev-gguf-q6k": {
+    "hardware_requirements": {
+      "disk_space_gb": 10,
+      "min_ram_gb": 20,
+      "min_vram_gb": 10,
+      "performance_notes": "High quality quantization, close to original",
+      "recommended_ram_gb": 32,
+      "recommended_vram_gb": 16,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.1 Non-Commercial License"
+    },
+    "model_type": "flux",
+    "parameters": {
+      "guidance_scale": 1.0,
+      "max_sequence_length": 512,
+      "num_inference_steps": 28
+    },
+    "repo_id": "city96/FLUX.1-dev-gguf",
+    "variant": "gguf-q6k"
+  },
+  "flux.1-dev-gguf-q8": {
+    "hardware_requirements": {
+      "disk_space_gb": 12,
+      "min_ram_gb": 24,
+      "min_vram_gb": 12,
+      "performance_notes": "Very high quality, minimal quantization loss",
+      "recommended_ram_gb": 36,
+      "recommended_vram_gb": 18,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.1 Non-Commercial License"
+    },
+    "model_type": "flux",
+    "parameters": {
+      "guidance_scale": 1.0,
+      "max_sequence_length": 512,
+      "num_inference_steps": 28
+    },
+    "repo_id": "city96/FLUX.1-dev-gguf",
+    "variant": "gguf-q8"
+  },
+  "flux.1-dev-mlx": {
+    "hardware_requirements": {
+      "disk_space_gb": 14,
+      "min_ram_gb": 16,
+      "min_vram_gb": 12,
+      "performance_notes": "Apple Silicon native via mflux at 8-bit quant. Typically 2-3x faster than PyTorch+MPS. Gated FLUX.1-dev license — set HF_TOKEN before pulling. Requires the [mlx] extra.",
+      "recommended_ram_gb": 32,
+      "recommended_vram_gb": 16,
+      "supported_devices": [
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.1 Non-Commercial License"
+    },
+    "model_type": "mlx",
+    "parameters": {
+      "guidance_scale": 3.5,
+      "max_sequence_length": 512,
+      "mlx_model_name": "dev",
+      "mlx_variant": "flux1",
+      "num_inference_steps": 28,
+      "quantize": 8
+    },
+    "repo_id": "black-forest-labs/FLUX.1-dev",
+    "variant": "mlx-q8"
+  },
+  "flux.1-fill-dev": {
+    "hardware_requirements": {
+      "disk_space_gb": 24,
+      "min_ram_gb": 32,
+      "min_vram_gb": 20,
+      "performance_notes": "FLUX inpainting/outpainting model.",
+      "recommended_ram_gb": 64,
+      "recommended_vram_gb": 24,
+      "supported_devices": [
+        "CUDA"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.1 Non-Commercial License"
+    },
+    "model_type": "flux",
+    "parameters": {
+      "guidance_scale": 30.0,
+      "max_sequence_length": 512,
+      "num_inference_steps": 28,
+      "pipeline_class": "FluxFillPipeline"
+    },
+    "repo_id": "black-forest-labs/FLUX.1-Fill-dev",
+    "variant": "fp16"
+  },
+  "flux.1-fill-dev-mlx": {
+    "hardware_requirements": {
+      "disk_space_gb": 14,
+      "min_ram_gb": 24,
+      "min_vram_gb": 12,
+      "performance_notes": "Apple Silicon native FLUX.1 Fill (inpaint/outpaint) at 8-bit MLX. Requires image= AND mask_image= kwargs in generate(). Gated license.",
+      "recommended_ram_gb": 32,
+      "recommended_vram_gb": 20,
+      "supported_devices": [
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.1 Non-Commercial License"
+    },
+    "model_type": "mlx",
+    "parameters": {
+      "guidance_scale": 3.5,
+      "mlx_model_name": "dev",
+      "mlx_variant": "flux1-fill",
+      "num_inference_steps": 28,
+      "quantize": 8
+    },
+    "repo_id": "black-forest-labs/FLUX.1-Fill-dev",
+    "variant": "mlx-q8"
+  },
+  "flux.1-kontext-dev": {
+    "hardware_requirements": {
+      "disk_space_gb": 24,
+      "min_ram_gb": 32,
+      "min_vram_gb": 20,
+      "performance_notes": "12B instruction-based image editing model. Pass an input 'image' to the generate call along with the edit prompt. Native diffusers FluxKontextPipeline. Top-trending image-edit model on HuggingFace.",
+      "recommended_ram_gb": 64,
+      "recommended_vram_gb": 24,
+      "supported_devices": [
+        "CUDA",
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.1 Non-Commercial License"
+    },
+    "model_type": "flux",
+    "parameters": {
+      "guidance_scale": 2.5,
+      "max_sequence_length": 512,
+      "num_inference_steps": 28,
+      "pipeline_class": "FluxKontextPipeline"
+    },
+    "repo_id": "black-forest-labs/FLUX.1-Kontext-dev",
+    "variant": "fp16"
+  },
+  "flux.1-kontext-dev-mlx": {
+    "hardware_requirements": {
+      "disk_space_gb": 14,
+      "min_ram_gb": 24,
+      "min_vram_gb": 12,
+      "performance_notes": "Apple Silicon native image editing via mflux. 12B Kontext model at 8-bit MLX quant. Requires an input image — pass image=<PIL.Image|path> to generate(). Gated license.",
+      "recommended_ram_gb": 32,
+      "recommended_vram_gb": 20,
+      "supported_devices": [
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.1 Non-Commercial License"
+    },
+    "model_type": "mlx",
+    "parameters": {
+      "guidance_scale": 2.5,
+      "mlx_model_name": "dev",
+      "mlx_variant": "flux1-kontext",
+      "num_inference_steps": 28,
+      "quantize": 8
+    },
+    "repo_id": "black-forest-labs/FLUX.1-Kontext-dev",
+    "variant": "mlx-q8"
+  },
+  "flux.1-redux-dev-mlx": {
+    "hardware_requirements": {
+      "disk_space_gb": 14,
+      "min_ram_gb": 24,
+      "min_vram_gb": 12,
+      "performance_notes": "Apple Silicon native FLUX.1 Redux at 8-bit MLX. Image-variation model: pass redux_images=[<PIL|path>, ...] to generate(). Gated license.",
+      "recommended_ram_gb": 32,
+      "recommended_vram_gb": 20,
+      "supported_devices": [
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.1 Non-Commercial License"
+    },
+    "model_type": "mlx",
+    "parameters": {
+      "guidance_scale": 2.5,
+      "mlx_model_name": "dev",
+      "mlx_variant": "flux1-redux",
+      "num_inference_steps": 28,
+      "quantize": 8
+    },
+    "repo_id": "black-forest-labs/FLUX.1-Redux-dev",
+    "variant": "mlx-q8"
+  },
+  "flux.1-schnell": {
+    "hardware_requirements": {
+      "disk_space_gb": 24,
+      "min_ram_gb": 24,
+      "min_vram_gb": 16,
+      "performance_notes": "Faster variant with fewer steps. Good balance of speed and quality.",
+      "recommended_ram_gb": 32,
+      "recommended_vram_gb": 20,
+      "supported_devices": [
+        "CUDA",
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": true,
+      "requires_agreement": false,
+      "type": "Apache 2.0"
+    },
+    "model_type": "flux",
+    "parameters": {
+      "guidance_scale": 1.0,
+      "max_sequence_length": 256,
+      "num_inference_steps": 4
+    },
+    "repo_id": "black-forest-labs/FLUX.1-schnell",
+    "variant": "fp16"
+  },
+  "flux.1-schnell-mlx": {
+    "hardware_requirements": {
+      "disk_space_gb": 14,
+      "min_ram_gb": 16,
+      "min_vram_gb": 12,
+      "performance_notes": "Apple Silicon native via mflux. Typically 2-3x faster than the PyTorch+MPS path. Apache 2.0. Requires the [mlx] extra: pip install 'ollamadiffuser[mlx]'.",
+      "recommended_ram_gb": 32,
+      "recommended_vram_gb": 16,
+      "supported_devices": [
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": true,
+      "requires_agreement": false,
+      "type": "Apache 2.0"
+    },
+    "model_type": "mlx",
+    "parameters": {
+      "guidance_scale": 0.0,
+      "max_sequence_length": 256,
+      "mlx_model_name": "schnell",
+      "mlx_variant": "flux1",
+      "num_inference_steps": 4,
+      "quantize": 8
+    },
+    "repo_id": "black-forest-labs/FLUX.1-schnell",
+    "variant": "mlx-q8"
+  },
+  "flux.1-schnell-mlx-q4": {
+    "hardware_requirements": {
+      "disk_space_gb": 8,
+      "min_ram_gb": 16,
+      "min_vram_gb": 6,
+      "performance_notes": "Mac Mini M4 16GB friendly. 4-bit MLX quant of FLUX.1-schnell — small quality drop vs Q8 but fits ~8GB. Apache 2.0.",
+      "recommended_ram_gb": 24,
+      "recommended_vram_gb": 12,
+      "supported_devices": [
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": true,
+      "requires_agreement": false,
+      "type": "Apache 2.0"
+    },
+    "model_type": "mlx",
+    "parameters": {
+      "guidance_scale": 0.0,
+      "max_sequence_length": 256,
+      "mlx_model_name": "schnell",
+      "mlx_variant": "flux1",
+      "num_inference_steps": 4,
+      "quantize": 4
+    },
+    "repo_id": "black-forest-labs/FLUX.1-schnell",
+    "variant": "mlx-q4"
+  },
+  "flux.2-dev": {
+    "allow_patterns": [
+      "model_index.json",
+      "scheduler/*",
+      "text_encoder/*",
+      "text_encoder_2/*",
+      "tokenizer/*",
+      "tokenizer_2/*",
+      "transformer/*",
+      "vae/*"
+    ],
+    "hardware_requirements": {
+      "disk_space_gb": 36,
+      "min_ram_gb": 32,
+      "min_vram_gb": 14,
+      "performance_notes": "FLUX.2 32B parameter model. Requires CPU offloading on consumer GPUs. Requires diffusers from source.",
+      "recommended_ram_gb": 64,
+      "recommended_vram_gb": 24,
+      "supported_devices": [
+        "CUDA"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "FLUX.2 Dev Non-Commercial License"
+    },
+    "model_type": "generic",
+    "parameters": {
+      "enable_cpu_offload": true,
+      "guidance_scale": 3.5,
+      "num_inference_steps": 28,
+      "pipeline_class": "Flux2Pipeline",
+      "torch_dtype": "bfloat16"
+    },
+    "repo_id": "black-forest-labs/FLUX.2-dev",
+    "variant": "fp16"
+  },
+  "flux.2-klein-4b": {
+    "hardware_requirements": {
+      "disk_space_gb": 10,
+      "min_ram_gb": 16,
+      "min_vram_gb": 10,
+      "performance_notes": "Compact 4B FLUX.2 model. Apache 2.0 licensed. Requires diffusers from source. MPS uses bfloat16 (PyTorch 2.3+).",
+      "recommended_ram_gb": 32,
+      "recommended_vram_gb": 16,
+      "supported_devices": [
+        "CUDA",
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": true,
+      "requires_agreement": false,
+      "type": "Apache 2.0"
+    },
+    "model_type": "generic",
+    "parameters": {
+      "guidance_scale": 3.5,
+      "num_inference_steps": 28,
+      "pipeline_class": "Flux2KleinPipeline",
+      "torch_dtype": "bfloat16"
+    },
+    "repo_id": "black-forest-labs/FLUX.2-klein-4B",
+    "variant": "fp16"
+  },
+  "flux.2-klein-4b-mlx": {
+    "hardware_requirements": {
+      "disk_space_gb": 7,
+      "min_ram_gb": 16,
+      "min_vram_gb": 6,
+      "performance_notes": "Apple Silicon native FLUX.2 4B at 8-bit MLX. Fits Mac Mini M4 16GB UMA. Apache 2.0 — commercial-friendly.",
+      "recommended_ram_gb": 32,
+      "recommended_vram_gb": 12,
+      "supported_devices": [
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": true,
+      "requires_agreement": false,
+      "type": "Apache 2.0"
+    },
+    "model_type": "mlx",
+    "parameters": {
+      "guidance_scale": 3.5,
+      "mlx_model_name": "klein-4b",
+      "mlx_variant": "flux2",
+      "num_inference_steps": 28,
+      "quantize": 8
+    },
+    "repo_id": "black-forest-labs/FLUX.2-klein-4B",
+    "variant": "mlx-q8"
+  },
+  "flux.2-klein-9b-mlx": {
+    "hardware_requirements": {
+      "disk_space_gb": 13,
+      "min_ram_gb": 24,
+      "min_vram_gb": 12,
+      "performance_notes": "Apple Silicon native FLUX.2 9B at 8-bit MLX. Fits Mac Pro M1 32GB; tight on M4 16GB. Apache 2.0.",
+      "recommended_ram_gb": 32,
+      "recommended_vram_gb": 20,
+      "supported_devices": [
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": true,
+      "requires_agreement": false,
+      "type": "Apache 2.0"
+    },
+    "model_type": "mlx",
+    "parameters": {
+      "guidance_scale": 3.5,
+      "mlx_model_name": "klein-9b",
+      "mlx_variant": "flux2",
+      "num_inference_steps": 28,
+      "quantize": 8
+    },
+    "repo_id": "black-forest-labs/FLUX.2-klein-9B",
+    "variant": "mlx-q8"
+  },
+  "hunyuan-dit": {
+    "hardware_requirements": {
+      "disk_space_gb": 12,
+      "min_ram_gb": 24,
+      "min_vram_gb": 6,
+      "performance_notes": "Tencent 1.5B model with dual text encoders (mT5 + bilingual CLIP). Fine-grained Chinese understanding. MPS requires 24GB+ unified memory (no CPU offload on Apple Silicon).",
+      "recommended_ram_gb": 32,
+      "recommended_vram_gb": 16,
+      "supported_devices": [
+        "CUDA",
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": true,
+      "requires_agreement": false,
+      "type": "Tencent Hunyuan Community License"
+    },
+    "model_type": "generic",
+    "parameters": {
+      "enable_cpu_offload": true,
+      "guidance_scale": 5.0,
+      "num_inference_steps": 50,
+      "pipeline_class": "HunyuanDiTPipeline",
+      "torch_dtype": "float16"
+    },
+    "repo_id": "Tencent-Hunyuan/HunyuanDiT-v1.2-Diffusers",
+    "variant": "fp16"
+  },
+  "kolors": {
+    "hardware_requirements": {
+      "disk_space_gb": 18,
+      "min_ram_gb": 32,
+      "min_vram_gb": 8,
+      "performance_notes": "Kuaishou 8.6B model with ChatGLM3 encoder. Bilingual Chinese/English. Midjourney-v6 level quality. MPS requires 32GB unified memory (no CPU offload on Apple Silicon).",
+      "recommended_ram_gb": 32,
+      "recommended_vram_gb": 18,
+      "supported_devices": [
+        "CUDA",
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": true,
+      "requires_agreement": false,
+      "type": "Kolors License"
+    },
+    "model_type": "generic",
+    "parameters": {
+      "enable_cpu_offload": true,
+      "guidance_scale": 5.0,
+      "num_inference_steps": 50,
+      "pipeline_class": "KolorsPipeline",
+      "torch_dtype": "float16",
+      "vae_upcast_float32": true
+    },
+    "repo_id": "Kwai-Kolors/Kolors-diffusers",
+    "variant": "fp16"
+  },
+  "lumina-2": {
+    "hardware_requirements": {
+      "disk_space_gb": 6,
+      "min_ram_gb": 16,
+      "min_vram_gb": 8,
+      "performance_notes": "Alpha-VLLM 2B model. Unified text+image token architecture. Works on Apple Silicon (tight on 16GB).",
+      "recommended_ram_gb": 32,
+      "recommended_vram_gb": 16,
+      "supported_devices": [
+        "CUDA",
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": true,
+      "requires_agreement": false,
+      "type": "Apache 2.0"
+    },
+    "model_type": "generic",
+    "parameters": {
+      "enable_cpu_offload": true,
+      "guidance_scale": 4.0,
+      "num_inference_steps": 30,
+      "pipeline_class": "Lumina2Pipeline",
+      "torch_dtype": "bfloat16"
+    },
+    "repo_id": "Alpha-VLLM/Lumina-Image-2.0",
+    "variant": "fp16"
+  },
+  "omnigen": {
+    "hardware_requirements": {
+      "disk_space_gb": 10,
+      "min_ram_gb": 16,
+      "min_vram_gb": 12,
+      "performance_notes": "BAAI 3.8B unified model. Text-to-image, editing, subject-driven generation without extra plugins.",
+      "recommended_ram_gb": 32,
+      "recommended_vram_gb": 18,
+      "supported_devices": [
+        "CUDA"
+      ]
+    },
+    "license_info": {
+      "commercial_use": true,
+      "requires_agreement": false,
+      "type": "MIT"
+    },
+    "model_type": "generic",
+    "parameters": {
+      "enable_cpu_offload": true,
+      "guidance_scale": 2.5,
+      "num_inference_steps": 50,
+      "pipeline_class": "OmniGenPipeline",
+      "supports_negative_prompt": false,
+      "torch_dtype": "bfloat16"
+    },
+    "repo_id": "Shitao/OmniGen-v1-diffusers",
+    "variant": "fp16"
+  },
+  "pixart-sigma": {
+    "hardware_requirements": {
+      "disk_space_gb": 3,
+      "min_ram_gb": 8,
+      "min_vram_gb": 6,
+      "performance_notes": "Very lightweight 0.6B model. 4K capable. Runs well on MPS with float16.",
+      "recommended_ram_gb": 16,
+      "recommended_vram_gb": 10,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "license_info": {
+      "commercial_use": true,
+      "requires_agreement": false,
+      "type": "PixArt Open License"
+    },
+    "model_type": "generic",
+    "parameters": {
+      "guidance_scale": 4.5,
+      "num_inference_steps": 20,
+      "pipeline_class": "PixArtSigmaPipeline",
+      "torch_dtype": "float16"
+    },
+    "repo_id": "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
+    "variant": "fp16"
+  },
+  "qwen-image-edit-mlx": {
+    "hardware_requirements": {
+      "disk_space_gb": 22,
+      "min_ram_gb": 24,
+      "min_vram_gb": 18,
+      "performance_notes": "Apple Silicon native Qwen-Image-Edit (20B) at 8-bit MLX. Image-editing companion to qwen-image-mlx. M1 32GB+ only. Apache 2.0.",
+      "recommended_ram_gb": 64,
+      "recommended_vram_gb": 24,
+      "supported_devices": [
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": true,
+      "requires_agreement": false,
+      "type": "Apache 2.0"
+    },
+    "model_type": "mlx",
+    "parameters": {
+      "guidance_scale": 4.0,
+      "mlx_model_name": "qwen-image-edit",
+      "mlx_variant": "qwen-image",
+      "num_inference_steps": 30,
+      "quantize": 8
+    },
+    "repo_id": "Qwen/Qwen-Image-Edit",
+    "variant": "mlx-q8"
+  },
+  "qwen-image-mlx": {
+    "hardware_requirements": {
+      "disk_space_gb": 22,
+      "min_ram_gb": 24,
+      "min_vram_gb": 18,
+      "performance_notes": "20B Qwen-Image at 8-bit MLX. Requires Mac Pro M1 32GB+ — too large for M4 16GB. Apache 2.0.",
+      "recommended_ram_gb": 64,
+      "recommended_vram_gb": 24,
+      "supported_devices": [
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": true,
+      "requires_agreement": false,
+      "type": "Apache 2.0"
+    },
+    "model_type": "mlx",
+    "parameters": {
+      "guidance_scale": 4.0,
+      "mlx_model_name": "qwen-image",
+      "mlx_variant": "qwen-image",
+      "num_inference_steps": 30,
+      "quantize": 8
+    },
+    "repo_id": "Qwen/Qwen-Image",
+    "variant": "mlx-q8"
+  },
+  "realistic-vision-v6": {
+    "hardware_requirements": {
+      "disk_space_gb": 5,
+      "min_ram_gb": 8,
+      "min_vram_gb": 4,
+      "performance_notes": "Photorealistic SD 1.5 model. Great for portraits.",
+      "recommended_ram_gb": 16,
+      "recommended_vram_gb": 6,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "license_info": {
+      "commercial_use": true,
+      "requires_agreement": false,
+      "type": "CreativeML Open RAIL-M"
+    },
+    "model_type": "sd15",
+    "parameters": {
+      "guidance_scale": 5.0,
+      "num_inference_steps": 30
+    },
+    "repo_id": "SG161222/Realistic_Vision_V6.0_B1_noVAE",
+    "variant": "fp16"
+  },
+  "realvisxl-v4": {
+    "hardware_requirements": {
+      "disk_space_gb": 7,
+      "min_ram_gb": 12,
+      "min_vram_gb": 6,
+      "performance_notes": "Photorealistic SDXL finetune. Very popular community model.",
+      "recommended_ram_gb": 24,
+      "recommended_vram_gb": 10,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "license_info": {
+      "commercial_use": true,
+      "requires_agreement": false,
+      "type": "CreativeML Open RAIL++-M"
+    },
+    "model_type": "sdxl",
+    "parameters": {
+      "guidance_scale": 5.0,
+      "num_inference_steps": 30
+    },
+    "repo_id": "SG161222/RealVisXL_V4.0",
+    "variant": "fp16"
+  },
+  "sana-1.5": {
+    "hardware_requirements": {
+      "disk_space_gb": 4,
+      "min_ram_gb": 16,
+      "min_vram_gb": 8,
+      "performance_notes": "NVIDIA 1.6B model. Very efficient, competitive with 12B models.",
+      "recommended_ram_gb": 32,
+      "recommended_vram_gb": 12,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "license_info": {
+      "commercial_use": true,
+      "requires_agreement": false,
+      "type": "Apache 2.0"
+    },
+    "model_type": "generic",
+    "parameters": {
+      "guidance_scale": 5.0,
+      "num_inference_steps": 20,
+      "pipeline_class": "SanaPipeline",
+      "torch_dtype": "float16"
+    },
+    "repo_id": "Efficient-Large-Model/SANA1.5_1.6B_1024px_diffusers",
+    "variant": "fp16"
+  },
+  "sdxl-lightning-4step": {
+    "allow_patterns": [
+      "sdxl_lightning_4step.safetensors"
+    ],
+    "hardware_requirements": {
+      "disk_space_gb": 7,
+      "min_ram_gb": 12,
+      "min_vram_gb": 6,
+      "performance_notes": "Lightning-fast SDXL with 4 steps.",
+      "recommended_ram_gb": 24,
+      "recommended_vram_gb": 10,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "license_info": {
+      "commercial_use": true,
+      "requires_agreement": false,
+      "type": "OpenRAIL++"
+    },
+    "model_type": "sdxl",
+    "parameters": {
+      "guidance_scale": 0.0,
+      "num_inference_steps": 4,
+      "scheduler_class": "EulerDiscreteScheduler",
+      "scheduler_kwargs": {
+        "timestep_spacing": "trailing"
+      },
+      "single_file": "sdxl_lightning_4step.safetensors"
+    },
+    "repo_id": "ByteDance/SDXL-Lightning",
+    "variant": "fp16"
+  },
+  "sdxl-turbo": {
+    "hardware_requirements": {
+      "disk_space_gb": 7,
+      "min_ram_gb": 12,
+      "min_vram_gb": 6,
+      "performance_notes": "Distilled SDXL. Single-step inference, extremely fast.",
+      "recommended_ram_gb": 24,
+      "recommended_vram_gb": 10,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "Stability AI Non-Commercial Research Community License"
+    },
+    "model_type": "sdxl",
+    "parameters": {
+      "guidance_scale": 0.0,
+      "num_inference_steps": 1
+    },
+    "repo_id": "stabilityai/sdxl-turbo",
+    "variant": "fp16"
+  },
+  "stable-diffusion-1.5": {
+    "hardware_requirements": {
+      "disk_space_gb": 5,
+      "min_ram_gb": 8,
+      "min_vram_gb": 4,
+      "performance_notes": "Runs well on most modern GPUs, including GTX 1060+",
+      "recommended_ram_gb": 16,
+      "recommended_vram_gb": 6,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "model_type": "sd15",
+    "parameters": {
+      "guidance_scale": 7.5,
+      "num_inference_steps": 50
+    },
+    "repo_id": "runwayml/stable-diffusion-v1-5",
+    "variant": "fp16"
+  },
+  "stable-diffusion-3.5-large": {
+    "hardware_requirements": {
+      "disk_space_gb": 16,
+      "min_ram_gb": 24,
+      "min_vram_gb": 12,
+      "performance_notes": "Large SD3.5 model. Higher quality than medium variant.",
+      "recommended_ram_gb": 48,
+      "recommended_vram_gb": 16,
+      "supported_devices": [
+        "CUDA",
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "Stability AI Community License"
+    },
+    "model_type": "sd3",
+    "parameters": {
+      "guidance_scale": 3.5,
+      "num_inference_steps": 28
+    },
+    "repo_id": "stabilityai/stable-diffusion-3.5-large",
+    "variant": "fp16"
+  },
+  "stable-diffusion-3.5-large-turbo": {
+    "hardware_requirements": {
+      "disk_space_gb": 16,
+      "min_ram_gb": 24,
+      "min_vram_gb": 12,
+      "performance_notes": "Turbo variant with 4-step generation. Fast inference.",
+      "recommended_ram_gb": 48,
+      "recommended_vram_gb": 16,
+      "supported_devices": [
+        "CUDA",
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": false,
+      "requires_agreement": true,
+      "type": "Stability AI Community License"
+    },
+    "model_type": "sd3",
+    "parameters": {
+      "guidance_scale": 0.0,
+      "num_inference_steps": 4
+    },
+    "repo_id": "stabilityai/stable-diffusion-3.5-large-turbo",
+    "variant": "fp16"
+  },
+  "stable-diffusion-3.5-medium": {
+    "hardware_requirements": {
+      "disk_space_gb": 10,
+      "min_ram_gb": 16,
+      "min_vram_gb": 8,
+      "performance_notes": "Best on NVIDIA RTX 3080+ or Apple M2 Pro+",
+      "recommended_ram_gb": 32,
+      "recommended_vram_gb": 12,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "model_type": "sd3",
+    "parameters": {
+      "guidance_scale": 3.5,
+      "num_inference_steps": 28
+    },
+    "repo_id": "stabilityai/stable-diffusion-3.5-medium",
+    "variant": "fp16"
+  },
+  "stable-diffusion-xl-base": {
+    "hardware_requirements": {
+      "disk_space_gb": 7,
+      "min_ram_gb": 12,
+      "min_vram_gb": 6,
+      "performance_notes": "Good on NVIDIA RTX 3070+ or Apple M1 Pro+",
+      "recommended_ram_gb": 24,
+      "recommended_vram_gb": 10,
+      "supported_devices": [
+        "CUDA",
+        "MPS",
+        "CPU"
+      ]
+    },
+    "model_type": "sdxl",
+    "parameters": {
+      "guidance_scale": 7.5,
+      "num_inference_steps": 50
+    },
+    "repo_id": "stabilityai/stable-diffusion-xl-base-1.0",
+    "variant": "fp16"
+  },
+  "z-image-turbo": {
+    "hardware_requirements": {
+      "disk_space_gb": 14,
+      "min_ram_gb": 16,
+      "min_vram_gb": 10,
+      "performance_notes": "Alibaba 6B model. 8-step turbo generation. Bilingual Chinese/English. Requires diffusers from source.",
+      "recommended_ram_gb": 32,
+      "recommended_vram_gb": 16,
+      "supported_devices": [
+        "CUDA"
+      ]
+    },
+    "license_info": {
+      "commercial_use": true,
+      "requires_agreement": false,
+      "type": "Apache 2.0"
+    },
+    "model_type": "generic",
+    "parameters": {
+      "guidance_scale": 5.0,
+      "num_inference_steps": 8,
+      "pipeline_class": "ZImagePipeline",
+      "torch_dtype": "bfloat16"
+    },
+    "repo_id": "Tongyi-MAI/Z-Image-Turbo",
+    "variant": "fp16"
+  },
+  "z-image-turbo-mlx": {
+    "hardware_requirements": {
+      "disk_space_gb": 8,
+      "min_ram_gb": 16,
+      "min_vram_gb": 6,
+      "performance_notes": "Apple Silicon native Z-Image-Turbo via mflux. 6B parameters, 8-step DMD, 8-bit MLX. Fits Mac Mini M4 16GB. Apache 2.0.",
+      "recommended_ram_gb": 24,
+      "recommended_vram_gb": 12,
+      "supported_devices": [
+        "MPS"
+      ]
+    },
+    "license_info": {
+      "commercial_use": true,
+      "requires_agreement": false,
+      "type": "Apache 2.0"
+    },
+    "model_type": "mlx",
+    "parameters": {
+      "guidance_scale": 4.0,
+      "mlx_model_name": "z-image-turbo",
+      "mlx_variant": "z_image",
+      "num_inference_steps": 8,
+      "quantize": 8
+    },
+    "repo_id": "Tongyi-MAI/Z-Image-Turbo",
+    "variant": "mlx-q8"
+  }
+}

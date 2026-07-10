@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.19] - 2026-05-19
+
+### 🗂️ Model registry moved to data (`models.yaml`) — contributor flywheel
+
+The 59 built-in models moved out of a ~1500-line Python dict literal in
+`model_registry.py` and into a bundled **`models.yaml`** data file.
+`README` has long claimed "add a model via config alone, no code changes"
+— but the config *was* Python, so adding a model still meant editing code
+and reviewing logic. Now it's literally true: **contributing a model is a
+pure-data PR** against `ollamadiffuser/core/config/models.yaml`.
+
+- `_load_default_models()` shrank from ~1500 lines to a ~10-line YAML load.
+  `model_registry.py` went from 1747 → ~260 lines.
+- The YAML is the single source of truth for built-ins; user overrides in
+  `~/.ollamadiffuser/models.yaml` (or `OLLAMADIFFUSER_MODEL_CONFIG`) still
+  load and override on top, exactly as before.
+- Packaged via `MANIFEST.in` + `[tool.setuptools.package-data]`; verified
+  the built wheel ships `models.yaml` (a missing data file would silently
+  produce an empty registry, so this is tested at build time).
+
+### Zero-loss guarantee
+
+A snapshot of the registry was captured **before** the migration
+(`tests/fixtures/registry_snapshot.json`) and the YAML-loaded registry is
+asserted **deep-equal** to it. 8 new tests in `tests/test_registry_yaml.py`
+cover the snapshot equality, model count, YAML well-formedness, the minimal
+per-entry schema, MLX entries surviving, and user-override precedence.
+**144 passed, 8 skipped.**
+
 ## [2.0.18] - 2026-05-19
 
 ### 📦 Compile-free default install + `enable` command (install-friction / Tier 0)

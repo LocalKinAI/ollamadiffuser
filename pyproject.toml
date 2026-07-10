@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ollamadiffuser"
-version = "2.0.18"
+version = "2.0.19"
 authors = [
     {name = "LocalKinAI Team", email = "contact@localkin.ai"}
 ]
@@ -127,6 +127,10 @@ zip-safe = false
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["ollamadiffuser*"]
+
+[tool.setuptools.package-data]
+# Bundled model registry (data-as-config) must ship in the wheel.
+"ollamadiffuser.core.config" = ["models.yaml"]
 
 [tool.black]
 line-length = 88

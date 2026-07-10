@@ -2,6 +2,7 @@ include README.md
 include LICENSE
 include CHANGELOG.md
 include requirements.txt
+include ollamadiffuser/core/config/models.yaml
 recursive-include ollamadiffuser/ui/templates *.html
 recursive-include ollamadiffuser/ui/static *
 recursive-include ollamadiffuser/ui/samples *
