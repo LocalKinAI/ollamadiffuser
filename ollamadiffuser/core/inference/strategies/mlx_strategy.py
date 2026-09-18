@@ -51,14 +51,41 @@ logger = logging.getLogger(__name__)
 SUPPORTED_MLX_VARIANTS = frozenset({
     "flux1",             # FLUX.1 schnell / dev / krea-dev (text-to-image)
     "flux1-kontext",     # FLUX.1 Kontext (image editing)
-    "flux1-fill",        # FLUX.1 Fill (inpaint / outpaint)
+    "flux1-fill",        # FLUX.1 Fill (inpaint / outpaint / CatVTON try-on)
     "flux1-redux",       # FLUX.1 Redux (image-to-image variation)
     "flux1-depth",       # FLUX.1 Depth (depth-conditioned generation)
     "flux1-controlnet",  # FLUX.1 ControlNet (canny / upscaler)
     "flux2",             # FLUX.2 klein 4B/9B (text-to-image)
     "z_image",           # Z-Image / Z-Image-Turbo (text-to-image)
     "qwen-image",        # Qwen-Image / Qwen-Image-Edit
+    # Families mflux added after our May 2026 line. Each one is a class and
+    # an alias — see _ALIAS_ROUTED — because mflux resolves the config from
+    # the alias itself, so there is nothing per-family left to write.
+    "krea2",             # Krea 2 Turbo / Raw (text-to-image)
+    "boogu",             # Boogu Image Turbo (4-step, photographic, EN/ZH text)
+    "ernie-image",       # ERNIE-Image / -Turbo (Baidu)
+    "lens",              # Lens Turbo (Microsoft, 4-step)
+    "ideogram4",         # Ideogram 4 (JSON captions, typography)
+    "fibo",              # FIBO / FIBO-lite (JSON prompts)
+    "fibo-edit",         # FIBO-Edit / -rmbg (instruction editing)
+    "seedvr2",           # SeedVR2 3B / 7B (upscaling)
 })
+
+# Families whose mflux config comes straight from the alias: variant →
+# (module, class). ``ModelConfig.from_name`` resolves every alias in mflux's
+# own table, so these need no per-family factory — only the class to build.
+# All of them take ``(quantize=..., model_config=...)``, which is what
+# ``load()`` already passes.
+_ALIAS_ROUTED = {
+    "krea2":       ("mflux.models.krea2.variants.txt2img.krea2", "Krea2"),
+    "boogu":       ("mflux.models.boogu.variants.txt2img.boogu_image", "BooguImage"),
+    "ernie-image": ("mflux.models.ernie_image.variants.txt2img.ernie_image", "ErnieImage"),
+    "lens":        ("mflux.models.lens.variants.txt2img.lens_image", "LensImage"),
+    "ideogram4":   ("mflux.models.ideogram4.variants.txt2img.ideogram4", "Ideogram4"),
+    "fibo":        ("mflux.models.fibo.variants.txt2img.fibo", "FIBO"),
+    "fibo-edit":   ("mflux.models.fibo.variants.edit.fibo_edit", "FIBOEdit"),
+    "seedvr2":     ("mflux.models.seedvr2.variants.upscale.seedvr2", "SeedVR2"),
+}
 
 # Per-variant required-input kwargs (passed to ``generate()``). If any
 # of these are absent, ``generate()`` raises ValueError early instead of
@@ -69,6 +96,8 @@ _VARIANT_REQUIRED_INPUTS = {
     "flux1-redux":      ["redux_images"],
     "flux1-depth":      ["image"],
     "flux1-controlnet": ["control_image"],
+    "fibo-edit":        ["image"],
+    "seedvr2":          ["image"],
 }
 
 # mflux quantization values it actually accepts. None means "no quant".
@@ -91,9 +120,10 @@ def is_apple_silicon() -> bool:
 class MLXStrategy(InferenceStrategy):
     """Apple-Silicon-native inference via mflux.
 
-    Currently supports FLUX.1 text-to-image (schnell / dev / krea-dev).
-    Other mflux model families (Flux2, Z-Image, Qwen-Image) are wired
-    via the same ``mlx_variant`` parameter — see the constant
+    Covers every mflux family we register: the FLUX.1 variants, FLUX.2,
+    Z-Image, Qwen-Image, and — since mflux grew them — Krea 2, Boogu,
+    ERNIE-Image, Lens, Ideogram 4, FIBO, FIBO-Edit and SeedVR2. All of
+    them arrive through the same ``mlx_variant`` parameter; see
     ``SUPPORTED_MLX_VARIANTS``.
 
     Note: mflux uses MLX arrays under the hood, not PyTorch tensors.
@@ -198,6 +228,14 @@ class MLXStrategy(InferenceStrategy):
         ``ModelConfig.flux2_klein_4b()``.
 
         ``mlx_model_name`` selects the specific config within a family:
+          krea2         → "krea-2" | "krea-2-raw"
+          boogu         → "boogu-image-turbo"
+          ernie-image   → "ernie-image-turbo" | "ernie-image"
+          lens          → "lens-turbo"
+          ideogram4     → "ideogram4-fp8"
+          fibo          → "fibo" | "fibo-lite"
+          fibo-edit     → "fibo-edit" | "fibo-edit-rmbg"
+          seedvr2       → "seedvr2-3b" | "seedvr2-7b"
           flux1         → "schnell" | "dev" | "krea-dev"
           flux1-kontext → "dev"  (Kontext is single-config in mflux today)
           flux2         → "klein-4b" | "klein-9b"
@@ -208,6 +246,16 @@ class MLXStrategy(InferenceStrategy):
         Imports are local so this module is safe to import on non-MLX
         platforms.
         """
+        if variant in _ALIAS_ROUTED:
+            import importlib
+            from mflux.models.common.config.model_config import ModelConfig
+            module_path, class_name = _ALIAS_ROUTED[variant]
+            module = importlib.import_module(module_path)
+            model_cls = getattr(module, class_name)
+            # mflux raises its own error listing every alias it knows, which
+            # is a better message than one we would write here.
+            return model_cls, ModelConfig.from_name(model_name=mlx_model_name, base_model=None)
+
         if variant == "flux1":
             from mflux.models.flux.variants.txt2img.flux import Flux1
             from mflux.models.common.config.model_config import ModelConfig

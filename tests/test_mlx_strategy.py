@@ -6,6 +6,7 @@ mock the mflux model class so no weights need to download.
 """
 from __future__ import annotations
 
+import importlib.util
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,6 +19,17 @@ from ollamadiffuser.core.inference.strategies.mlx_strategy import (
     MLXStrategy,
     SUPPORTED_MLX_VARIANTS,
     is_apple_silicon,
+)
+
+# The resolution tests import mflux for real — that is the point of them, since
+# what they check is that our module paths and alias names still match theirs.
+# So they need the optional backend present, not just Apple Silicon: without
+# this they fail with ModuleNotFoundError on a machine that never installed it,
+# which reads as "the strategy is broken" and is not.
+_HAS_MFLUX = importlib.util.find_spec("mflux") is not None
+_needs_mflux = pytest.mark.skipif(
+    not is_apple_silicon() or not _HAS_MFLUX,
+    reason="MLX resolution needs Apple Silicon and mflux installed",
 )
 
 
@@ -122,12 +134,26 @@ class TestDispatch:
         assert isinstance(strategy, MLXStrategy)
 
     def test_supported_variants_constant(self):
-        # Phase 1 + Phase 2 + Phase 2.5 — nine variants total.
+        # Phase 1 + 2 + 2.5 (the FLUX/Z-Image/Qwen families), plus the eight
+        # families mflux added after them — seventeen in all.
         assert SUPPORTED_MLX_VARIANTS == frozenset({
             "flux1", "flux1-kontext",
             "flux1-fill", "flux1-redux", "flux1-depth", "flux1-controlnet",
             "flux2", "z_image", "qwen-image",
+            "krea2", "boogu", "ernie-image", "lens", "ideogram4",
+            "fibo", "fibo-edit", "seedvr2",
         })
+
+    def test_alias_routed_families_are_supported(self):
+        # Every alias-routed family must also be in the supported set, or
+        # load() refuses a variant the resolver can actually build.
+        assert set(mlx_strategy._ALIAS_ROUTED) <= SUPPORTED_MLX_VARIANTS
+
+    def test_image_only_families_require_an_image(self):
+        # An editor and an upscaler with no input image is a crash deep in
+        # mflux; the strategy has to catch it first.
+        for variant in ("fibo-edit", "seedvr2"):
+            assert "image" in mlx_strategy._VARIANT_REQUIRED_INPUTS[variant]
 
     def test_is_apple_silicon_returns_bool(self):
         assert isinstance(is_apple_silicon(), bool)
@@ -181,7 +207,7 @@ class TestConfigValidation:
 # Resolution per variant (no actual mflux call — verifies dispatch logic)
 # --------------------------------------------------------------------------
 
-@pytest.mark.skipif(not is_apple_silicon(), reason="MLX only runs on Apple Silicon")
+@_needs_mflux
 class TestVariantResolution:
     def test_flux1_resolves(self):
         cls, _ = MLXStrategy._resolve_model_and_config("flux1", "schnell")
@@ -226,6 +252,29 @@ class TestVariantResolution:
     def test_qwen_image_rejects_bad_name(self):
         with pytest.raises(ValueError, match="qwen-image"):
             MLXStrategy._resolve_model_and_config("qwen-image", "qwen-bogus")
+
+    # --- The families mflux added after our May 2026 line ---
+
+    @pytest.mark.parametrize("variant,alias,expected", [
+        ("krea2",       "krea-2",             "Krea2"),
+        ("boogu",       "boogu-image-turbo",  "BooguImage"),
+        ("ernie-image", "ernie-image-turbo",  "ErnieImage"),
+        ("lens",        "lens-turbo",         "LensImage"),
+        ("ideogram4",   "ideogram4-fp8",      "Ideogram4"),
+        ("fibo",        "fibo",               "FIBO"),
+        ("fibo-edit",   "fibo-edit",          "FIBOEdit"),
+        ("seedvr2",     "seedvr2-3b",         "SeedVR2"),
+    ])
+    def test_alias_routed_family_resolves(self, variant, alias, expected):
+        cls, config = MLXStrategy._resolve_model_and_config(variant, alias)
+        assert cls.__name__ == expected
+        assert config is not None
+
+    def test_alias_routed_family_rejects_bad_alias(self):
+        # mflux raises on an alias it does not know, and its message lists the
+        # ones it does — a better error than one written here.
+        with pytest.raises(Exception):
+            MLXStrategy._resolve_model_and_config("krea2", "krea-9000")
 
     # --- Phase 2.5: additional FLUX.1 family variants ---
 

@@ -1382,3 +1382,194 @@ models:
       type: MIT
       requires_agreement: false
       commercial_use: true
+  krea-2-turbo-mlx:
+    repo_id: krea/Krea-2-Turbo
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: krea2
+      mlx_model_name: krea-2
+      quantize: 8
+      num_inference_steps: 8
+      guidance_scale: 4.5
+    hardware_requirements:
+      min_vram_gb: 12
+      recommended_vram_gb: 20
+      min_ram_gb: 24
+      recommended_ram_gb: 32
+      disk_space_gb: 14
+      supported_devices:
+      - MPS
+      performance_notes: Apple Silicon native Krea 2 Turbo (12B) at 8-bit MLX, 8 steps. Wide stylistic
+        range with a photographic default; nine official style LoRAs upstream. Gated repo.
+    license_info:
+      type: Krea 2 Community License
+      requires_agreement: true
+      commercial_use: false
+  boogu-image-turbo-mlx:
+    repo_id: Boogu/Boogu-Image-0.1-Turbo
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: boogu
+      mlx_model_name: boogu-image-turbo
+      quantize: 8
+      num_inference_steps: 4
+    hardware_requirements:
+      min_vram_gb: 10
+      recommended_vram_gb: 16
+      min_ram_gb: 24
+      recommended_ram_gb: 32
+      disk_space_gb: 12
+      supported_devices:
+      - MPS
+      performance_notes: Apple Silicon native Boogu Image Turbo (10B) at 8-bit MLX. DMD-distilled — 4
+        steps up to 768px, 8 at 1024px — with a photographic look and bilingual EN/ZH text rendering.
+        Guidance is distilled in, so guidance_scale is ignored. Apache 2.0.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  ernie-image-turbo-mlx:
+    repo_id: baidu/ERNIE-Image-Turbo
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: ernie-image
+      mlx_model_name: ernie-image-turbo
+      quantize: 8
+      num_inference_steps: 8
+    hardware_requirements:
+      min_vram_gb: 8
+      recommended_vram_gb: 14
+      min_ram_gb: 16
+      recommended_ram_gb: 24
+      disk_space_gb: 10
+      supported_devices:
+      - MPS
+      performance_notes: Apple Silicon native ERNIE-Image-Turbo (8B) at 8-bit MLX, 8 steps. Single-stream
+        DiT from Baidu; vivid, high-contrast output. The base ERNIE-Image wants 50 steps at guidance 4.0.
+        Apache 2.0.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  lens-turbo-mlx:
+    repo_id: Comfy-Org/Lens
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: lens
+      mlx_model_name: lens-turbo
+      quantize: 8
+      num_inference_steps: 4
+    hardware_requirements:
+      min_vram_gb: 12
+      recommended_vram_gb: 20
+      min_ram_gb: 24
+      recommended_ram_gb: 32
+      disk_space_gb: 16
+      supported_devices:
+      - MPS
+      performance_notes: Apple Silicon native Lens Turbo via mflux. 3.8B dual-stream MMDiT from Microsoft
+        with a 20B GPT-OSS text encoder — strong prompt adherence in 4 steps, and the encoder is most of
+        the download. Guidance is internalized.
+    license_info:
+      type: Other (see model card)
+      requires_agreement: false
+      commercial_use: false
+  ideogram-4-mlx:
+    repo_id: ideogram-ai/ideogram-4-fp8
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: ideogram4
+      mlx_model_name: ideogram4-fp8
+      quantize: 8
+    hardware_requirements:
+      min_vram_gb: 10
+      recommended_vram_gb: 18
+      min_ram_gb: 24
+      recommended_ram_gb: 32
+      disk_space_gb: 12
+      supported_devices:
+      - MPS
+      performance_notes: Apple Silicon native Ideogram 4 (9B) at 8-bit MLX. JSON-caption-native and
+        typography-focused. Its presets carry their own step count and guidance schedule, so
+        num_inference_steps and guidance_scale are ignored here.
+    license_info:
+      type: Other (see model card)
+      requires_agreement: false
+      commercial_use: false
+  fibo-mlx:
+    repo_id: briaai/FIBO
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: fibo
+      mlx_model_name: fibo
+      quantize: 8
+      num_inference_steps: 8
+      guidance_scale: 4.0
+    hardware_requirements:
+      min_vram_gb: 10
+      recommended_vram_gb: 16
+      min_ram_gb: 24
+      recommended_ram_gb: 32
+      disk_space_gb: 11
+      supported_devices:
+      - MPS
+      performance_notes: Apple Silicon native FIBO (8B) at 8-bit MLX. Takes JSON prompts describing a
+        scene structurally; 8 steps distilled, or 20 at guidance 4.0 on the base path. Gated repo.
+    license_info:
+      type: Bria Source-Available License
+      requires_agreement: true
+      commercial_use: false
+  fibo-edit-mlx:
+    repo_id: briaai/Fibo-Edit
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: fibo-edit
+      mlx_model_name: fibo-edit
+      quantize: 8
+      num_inference_steps: 8
+      guidance_scale: 4.0
+    hardware_requirements:
+      min_vram_gb: 10
+      recommended_vram_gb: 16
+      min_ram_gb: 24
+      recommended_ram_gb: 32
+      disk_space_gb: 11
+      supported_devices:
+      - MPS
+      performance_notes: Apple Silicon native FIBO-Edit (8B) at 8-bit MLX — instruction-based editing,
+        the FIBO family's answer to Kontext. Requires an input image — pass image=<PIL.Image|path> to
+        generate(). Gated repo.
+    license_info:
+      type: Bria Source-Available License
+      requires_agreement: true
+      commercial_use: false
+  seedvr2-3b-mlx:
+    repo_id: numz/SeedVR2_comfyUI
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: seedvr2
+      mlx_model_name: seedvr2-3b
+      quantize: 8
+    hardware_requirements:
+      min_vram_gb: 8
+      recommended_vram_gb: 16
+      min_ram_gb: 16
+      recommended_ram_gb: 32
+      disk_space_gb: 8
+      supported_devices:
+      - MPS
+      performance_notes: Apple Silicon native SeedVR2 3B at 8-bit MLX — an upscaler, not a generator.
+        Requires an input image — pass image=<PIL.Image|path> to generate(). The 7B variant is the same
+        repo under seedvr2-7b. Apache 2.0.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true

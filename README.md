@@ -2,7 +2,7 @@
 
 **Thank you for the incredible support and over 30,000 downloads!**
 
-`ollamadiffuser` is in **active development**. v2.0 brought a major architecture overhaul (strategy pattern, MCP/OpenClaw integration, Apple Silicon support, GGUF). The May 2026 line (v2.0.13 → v2.0.20) added an **MLX backend for Apple Silicon**, 7 new diffusers-pipeline models, a **compile-free default install** with a one-line `curl | sh` installer, and a **data-driven model registry** (`models.yaml`) — see [What's New](#-whats-new) below. Part of the **[LocalKinAI](https://github.com/LocalKinAI)** ecosystem.
+`ollamadiffuser` is in **active development**. v2.0 brought a major architecture overhaul (strategy pattern, MCP/OpenClaw integration, Apple Silicon support, GGUF). The May 2026 line (v2.0.13 → v2.0.20) added an **MLX backend for Apple Silicon**, 7 new diffusers-pipeline models, a **compile-free default install** with a one-line `curl | sh` installer, and a **data-driven model registry** (`models.yaml`); v2.0.21 brings the MLX registry up to date with mflux — **22 MLX entries** — see [What's New](#-whats-new) below. Part of the **[LocalKinAI](https://github.com/LocalKinAI)** ecosystem.
 
 ## 🆕 What's New
 
@@ -17,6 +17,16 @@ The 59 built-in models moved from a 1500-line Python dict into a bundled [`model
 ### v2.0.18 — Compile-free default install + `enable` command
 
 The default `pip install ollamadiffuser` is now **compile-free** (prebuilt wheels only — no CMake, no CUDA toolchain). Optional backends are opt-in by name via a new command: `ollamadiffuser enable mlx | gguf | mcp` — no shell-quoted `[extras]` to get wrong, and `enable gguf` sets the right `CMAKE_ARGS` (Metal on Mac) for you. The `curl | sh` installer now defaults to the lean core and auto-enables MLX on Apple Silicon.
+
+### v2.0.21 — eight more MLX families: Krea 2, Boogu, ERNIE-Image, Lens, Ideogram 4, FIBO, FIBO-Edit, SeedVR2
+
+mflux grew a lot of model families after our May line, and the registry had not
+caught up. Eight new entries — **22 MLX entries total** — covering photographic
+turbo models (Boogu 4-step with bilingual EN/ZH text, ERNIE-Image, Krea 2), a
+4-step Microsoft model with a 20B text encoder (Lens), typography (Ideogram 4),
+JSON-prompted generation and editing (FIBO, FIBO-Edit) and the best open
+upscaler (SeedVR2). Each is a class and an alias: mflux resolves the config from
+the alias itself, so adding a family is data plus one line of routing.
 
 ### v2.0.17 — MLX Phase 2.5: FLUX.1 family completion
 
@@ -114,14 +124,14 @@ Most models work **without any token** -- just install and go. See [Hugging Face
 - **🔄 LoRA Integration**: Dynamic LoRA loading and management
 - **🔌 MCP & OpenClaw**: Model Context Protocol server for AI assistant integration (OpenClaw, Claude Code, Cursor)
 - **🍎 Apple Silicon, two paths**:
-  - **MLX backend** via [mflux](https://github.com/filipstrand/mflux) — 14 native MLX entries (FLUX.1 family, FLUX.2 Klein, Z-Image, Qwen-Image, Kontext, Fill, Redux, Depth, ControlNet). Typically **2-3× faster** than the PyTorch + MPS path on M-series.
+  - **MLX backend** via [mflux](https://github.com/filipstrand/mflux) — 22 native MLX entries (FLUX.1 family, FLUX.2 Klein, Z-Image, Qwen-Image, Kontext, Fill, Redux, Depth, ControlNet, and since v2.0.21 Krea 2, Boogu, ERNIE-Image, Lens, Ideogram 4, FIBO, FIBO-Edit, SeedVR2). Typically **2-3× faster** than the PyTorch + MPS path on M-series.
   - **PyTorch + MPS** — full diffusers pipeline support with per-model dtype handling (float16/bfloat16, NaN sanitization), GGUF Metal acceleration, and `ollamadiffuser recommend` for hardware-aware model suggestions.
 - **📦 Smart Downloads**: `ollamadiffuser pull` downloads only diffusers pipeline files — skips root-level checkpoints, ONNX/Flax exports, and safety_checker. Saves 10–200 GB per model.
 - **📦 GGUF Support**: Memory-efficient quantized models (3GB VRAM minimum!) with CUDA and Metal acceleration
 - **🌐 Multiple Interfaces**: CLI, Python API, Web UI, and REST API
 - **📦 Model Management**: Easy installation and switching between models
 - **⚡ Performance Optimized**: Memory-efficient with GPU acceleration
-- **🧪 Test Suite**: 124 tests across settings, registry, engine, API, MPS, MLX, and MCP
+- **🧪 Test Suite**: 132 tests across settings, registry, engine, API, MPS, MLX, and MCP
 
 ### Option 1: Install from PyPI (Recommended)
 ```bash
@@ -364,6 +374,12 @@ MLX entries run through [mflux](https://github.com/filipstrand/mflux) on Apple S
 | `flux.2-klein-9b-mlx` | FLUX.2 Klein | Q8 | 13 GB | 20 GB | Apache 2.0 |
 | `z-image-turbo-mlx` | Z-Image (6B, 8-step DMD) | Q8 | 8 GB | 12 GB (**M4 16GB**) | Apache 2.0 |
 | `qwen-image-mlx` | Qwen-Image (20B) | Q8 | 22 GB | 24 GB | Apache 2.0 |
+| `boogu-image-turbo-mlx` | Boogu Image (10B, 4-step DMD) | Q8 | 12 GB | 16 GB | Apache 2.0 |
+| `ernie-image-turbo-mlx` | ERNIE-Image (8B, 8-step) | Q8 | 10 GB | 14 GB | Apache 2.0 |
+| `krea-2-turbo-mlx` | Krea 2 (12B, 8-step) | Q8 | 14 GB | 20 GB | Krea 2 Community (gated) |
+| `lens-turbo-mlx` | Lens (3.8B + 20B text encoder, 4-step) | Q8 | 16 GB | 20 GB | Other |
+| `ideogram-4-mlx` | Ideogram 4 (9B, preset schedules) | Q8 | 12 GB | 18 GB | Other |
+| `fibo-mlx` | FIBO (8B, JSON prompts) | Q8 | 11 GB | 16 GB | Bria (gated) |
 
 **Image editing / control:**
 
@@ -376,6 +392,8 @@ MLX entries run through [mflux](https://github.com/filipstrand/mflux) on Apple S
 | `flux.1-controlnet-canny-mlx` | `control_image=` (canny edges) | Non-Commercial |
 | `flux.1-controlnet-upscaler-mlx` | `control_image=` (low-res source) | Non-Commercial |
 | `qwen-image-edit-mlx` | `image=` | Apache 2.0 |
+| `fibo-edit-mlx` | `image=` | Bria (gated) |
+| `seedvr2-3b-mlx` | `image=` (upscales it) | Apache 2.0 |
 
 **Hardware fit at a glance:**
 - **Mac Mini M4 16 GB** can run anything marked ✅ above (Q4 FLUX.1-schnell, FLUX.2 Klein 4B, Z-Image-Turbo).

@@ -28,15 +28,27 @@ def _yaml_path() -> Path:
 
 
 class TestZeroLossMigration:
-    def test_registry_deep_equals_pre_migration_snapshot(self):
+    """The migration guarantee, which is about loss rather than about size.
+
+    This was an equality check against the snapshot, which meant every new
+    model broke it — and the guarantee the snapshot exists for is that nothing
+    from before the migration was lost or mangled, not that the registry never
+    grows again. So: every snapshot entry must still be present and identical,
+    and the registry may have more.
+    """
+
+    def test_registry_keeps_every_pre_migration_model(self):
         """The single most important test: no model was lost or mangled."""
         snapshot = json.loads(_SNAPSHOT.read_text(encoding="utf-8"))
         loaded = ModelRegistry()._registry
-        assert loaded == snapshot, "models.yaml drifted from the pinned snapshot"
+        missing = sorted(set(snapshot) - set(loaded))
+        assert not missing, f"models.yaml lost {missing}"
+        for name, cfg in snapshot.items():
+            assert loaded[name] == cfg, f"{name} drifted from the pinned snapshot"
 
-    def test_model_count_matches_snapshot(self):
+    def test_model_count_never_shrinks(self):
         snapshot = json.loads(_SNAPSHOT.read_text(encoding="utf-8"))
-        assert len(ModelRegistry()._registry) == len(snapshot)
+        assert len(ModelRegistry()._registry) >= len(snapshot)
 
 
 class TestModelsYaml:
@@ -67,7 +79,7 @@ class TestModelsYaml:
         """MLX entries (added across v2.0.15-2.0.17) survived the migration."""
         reg = ModelRegistry()._registry
         mlx = [n for n, c in reg.items() if c.get("model_type") == "mlx"]
-        assert len(mlx) >= 14, f"expected >=14 MLX entries, got {len(mlx)}"
+        assert len(mlx) >= 22, f"expected >=22 MLX entries, got {len(mlx)}"
 
 
 class TestUserOverridesStillWork:

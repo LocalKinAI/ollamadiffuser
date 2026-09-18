@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.21] - 2026-09-18
+
+### 🍎 Eight more MLX families — the registry catches up with mflux
+
+mflux added a lot of model families after our May line, and none of them were
+reachable from here. Now they are, as eight registry entries and one routing
+table:
+
+| Entry | Family | Why it is here |
+|---|---|---|
+| `boogu-image-turbo-mlx` | Boogu Image Turbo (10B) | 4-step DMD, photographic, bilingual EN/ZH text rendering. Apache 2.0. |
+| `ernie-image-turbo-mlx` | ERNIE-Image Turbo (8B) | Baidu single-stream DiT, 8 steps, vivid output. Apache 2.0. |
+| `krea-2-turbo-mlx` | Krea 2 Turbo (12B) | Wide stylistic range, photographic default, nine upstream style LoRAs. Gated. |
+| `lens-turbo-mlx` | Lens (3.8B + 20B TE) | Microsoft dual-stream MMDiT — strong prompt adherence in 4 steps. |
+| `ideogram-4-mlx` | Ideogram 4 (9B) | JSON-caption-native, typography-focused. |
+| `fibo-mlx` | FIBO (8B) | Structured JSON prompts rather than a sentence. Gated. |
+| `fibo-edit-mlx` | FIBO-Edit (8B) | Instruction editing, the FIBO family's Kontext. Requires `image=`. Gated. |
+| `seedvr2-3b-mlx` | SeedVR2 3B | The best open upscaler. Requires `image=`. Apache 2.0. |
+
+Adding a family is now data plus one line: `ModelConfig.from_name` resolves
+every alias in mflux's own table, so `_ALIAS_ROUTED` carries only the module
+and class name, and `_resolve_model_and_config` has one branch for all eight.
+`fibo-edit` and `seedvr2` are listed in `_VARIANT_REQUIRED_INPUTS`, so calling
+them without an input image fails here with a sentence instead of crashing deep
+inside mflux.
+
+### 🧪 Tests: two that could not survive a new model, fixed
+
+- **The registry snapshot was an equality check**, so every model added after
+  the `models.yaml` migration broke it — and what the snapshot is *for* is the
+  guarantee that nothing from before the migration was lost or mangled, not
+  that the registry never grows. It now asserts every snapshot entry is still
+  present and identical, and that the count never shrinks.
+- **The MLX resolution tests import mflux for real** (that is the point of
+  them: they check our module paths still match theirs), but they were gated
+  only on Apple Silicon — so on a Mac without the optional backend installed
+  they failed with `ModuleNotFoundError` and read as a broken strategy. They
+  now skip unless mflux is importable.
+
+132 tests pass, 31 skip without the optional backends.
+
 ## [2.0.20] - 2026-05-19
 
 ### 📥 One-line `curl | sh` installer — no system Python required
