@@ -3,6 +3,8 @@
 import asyncio
 import base64
 import io
+import tempfile
+from pathlib import Path
 import logging
 from typing import Any, Dict, Optional
 
@@ -259,6 +261,86 @@ def create_app() -> FastAPI:
         except Exception as e:
             logger.error(f"img2img failed: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Image-to-image generation failed")
+
+    # --- Video generation (LTX-2 on Apple Silicon) ---
+
+    @app.post("/api/generate/video")
+    async def generate_video(
+        prompt: str = Form(...),
+        seconds: Optional[float] = Form(None),
+        frames: Optional[int] = Form(None),
+        width: Optional[int] = Form(None),
+        height: Optional[int] = Form(None),
+        seed: Optional[int] = Form(None),
+        mode: Optional[str] = Form(None),
+        steps: Optional[int] = Form(None),
+        cfg_scale: Optional[float] = Form(None),
+        low_ram: Optional[bool] = Form(None),
+        enhance_prompt: Optional[bool] = Form(None),
+        image: Optional[UploadFile] = File(None),
+        audio: Optional[UploadFile] = File(None),
+    ):
+        """Generate a video, and return the mp4.
+
+        Form rather than JSON because the interesting inputs are files: a
+        reference image (image-to-video) and an audio track (audio-to-video,
+        which is how a voice drives a face). Both are optional; with neither
+        this is text-to-video.
+
+        The mp4 comes back as the body, and ``X-Output-Path`` says where it
+        also stays on disk — a four-second clip is a few MB, but a caller that
+        wants to hand the file to something else should not have to write it
+        out again.
+        """
+        engine = _get_engine()
+
+        # The uploads have to exist as files: the CLI takes paths.
+        temp_paths: list[Path] = []
+
+        async def _spill(upload: Optional[UploadFile], suffix: str) -> Optional[str]:
+            if upload is None:
+                return None
+            data = await upload.read()
+            if not data:
+                return None
+            handle = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+            handle.write(data)
+            handle.close()
+            temp_paths.append(Path(handle.name))
+            return handle.name
+
+        try:
+            image_path = await _spill(image, Path(image.filename or "ref.png").suffix or ".png")
+            audio_path = await _spill(audio, Path(audio.filename or "ref.wav").suffix or ".wav")
+
+            options = {
+                "frames": frames, "width": width, "height": height, "seed": seed,
+                "mode": mode, "steps": steps, "cfg_scale": cfg_scale,
+                "low_ram": low_ram, "enhance_prompt": enhance_prompt,
+                "image": image_path, "audio": audio_path,
+            }
+            options = {k: v for k, v in options.items() if v is not None}
+
+            output = await asyncio.to_thread(
+                engine.generate_video, prompt=prompt, seconds=seconds, **options
+            )
+            path = Path(output)
+            return Response(
+                content=path.read_bytes(),
+                media_type="video/mp4",
+                headers={"X-Output-Path": str(path)},
+            )
+        except RuntimeError as e:
+            # "not a video model", "not loaded", "ltx-2-mlx not found" — the
+            # caller can act on every one of these, so they are not 500s.
+            logger.error(f"Video generation refused: {e}")
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error(f"Video generation failed: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Video generation failed")
+        finally:
+            for temp in temp_paths:
+                temp.unlink(missing_ok=True)
 
     @app.post("/api/generate/inpaint")
     async def generate_inpaint(

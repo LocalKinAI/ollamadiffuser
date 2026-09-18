@@ -18,6 +18,13 @@ The 59 built-in models moved from a 1500-line Python dict into a bundled [`model
 
 The default `pip install ollamadiffuser` is now **compile-free** (prebuilt wheels only — no CMake, no CUDA toolchain). Optional backends are opt-in by name via a new command: `ollamadiffuser enable mlx | gguf | mcp` — no shell-quoted `[extras]` to get wrong, and `enable gguf` sets the right `CMAKE_ARGS` (Metal on Mac) for you. The `curl | sh` installer now defaults to the lean core and auto-enables MLX on Apple Silicon.
 
+### v2.0.22 — video, natively: LTX-2 on Apple Silicon
+
+Six new entries (`ltx-2.3-mlx-{q4,q8,bf16}`, `ltx-2.5-mlx-{q4,q8,bf16}`) drive
+[ltx-2-mlx](https://github.com/dgrauet/ltx-2-mlx) for text-to-video with audio,
+image-to-video and audio-to-video — plus a `POST /api/generate/video` endpoint and
+`engine.generate_video()`. See [the video section](#-video--ltx-2-on-apple-silicon).
+
 ### v2.0.21 — eight more MLX families: Krea 2, Boogu, ERNIE-Image, Lens, Ideogram 4, FIBO, FIBO-Edit, SeedVR2
 
 mflux grew a lot of model families after our May line, and the registry had not
@@ -114,7 +121,7 @@ Most models work **without any token** -- just install and go. See [Hugging Face
 
 ## ✨ Features
 
-- **🏗️ Strategy Architecture**: Clean per-model strategy pattern (SD1.5, SDXL, FLUX, SD3, ControlNet, Video, HiDream, GGUF, MLX, Generic)
+- **🏗️ Strategy Architecture**: Clean per-model strategy pattern (SD1.5, SDXL, FLUX, SD3, ControlNet, Video, LTX-2 video (MLX), HiDream, GGUF, MLX, Generic)
 - **🌐 60+ Models**: FLUX.1/2, SD 3.5, SDXL Lightning, CogView4, Kolors, SANA, PixArt-Sigma, Z-Image, Qwen-Image, Chroma1, and more
 - **🔌 Generic Pipeline**: Add new diffusers models via registry config alone -- no code changes needed. Built-in models live in [`models.yaml`](ollamadiffuser/core/config/models.yaml) (data, not code) — contributing a model is a pure-data PR against that file.
 - **🖼️ img2img & Inpainting**: Image-to-image and inpainting support across SD1.5, SDXL, and the API/Web UI
@@ -131,7 +138,7 @@ Most models work **without any token** -- just install and go. See [Hugging Face
 - **🌐 Multiple Interfaces**: CLI, Python API, Web UI, and REST API
 - **📦 Model Management**: Easy installation and switching between models
 - **⚡ Performance Optimized**: Memory-efficient with GPU acceleration
-- **🧪 Test Suite**: 132 tests across settings, registry, engine, API, MPS, MLX, and MCP
+- **🧪 Test Suite**: 183 tests across settings, registry, engine, API, MPS, MLX, LTX-2 video, and MCP
 
 ### Option 1: Install from PyPI (Recommended)
 ```bash
@@ -394,6 +401,46 @@ MLX entries run through [mflux](https://github.com/filipstrand/mflux) on Apple S
 | `qwen-image-edit-mlx` | `image=` | Apache 2.0 |
 | `fibo-edit-mlx` | `image=` | Bria (gated) |
 | `seedvr2-3b-mlx` | `image=` (upscales it) | Apache 2.0 |
+
+### 🎬 Video — LTX-2 on Apple Silicon
+
+Video entries (`model_type: ltx-video-mlx`) run [LTX-2](https://github.com/Lightricks/LTX-2) through
+[ltx-2-mlx](https://github.com/dgrauet/ltx-2-mlx), a pure-MLX port: text-to-video **with 48 kHz stereo
+audio**, image-to-video, audio-to-video, and LTX-2.5's predicted durations. This is the one strategy
+that shells out rather than importing — ltx-2-mlx is a three-package monorepo installed with `uv sync`
+that manages its own weight packs, and its CLI is the surface its author supports.
+
+| Entry | Pack | Disk | RAM | Default mode |
+|---|---|---|---|---|
+| `ltx-2.3-mlx-q4` | int4 | 12 GB | 16 GB+ | distilled, low-ram |
+| `ltx-2.3-mlx-q8` | int8 | 21 GB | 32 GB+ | two-stage |
+| `ltx-2.3-mlx-bf16` | bf16 | 42 GB | 64 GB+ | two-stages-hq, 720p |
+| `ltx-2.5-mlx-q4` / `-q8` / `-bf16` | 2.5 packs (gated) | 13 / 22 / 44 GB | 16 / 32 / 64 GB+ | predicted duration |
+
+```bash
+# One-time: the runtime it drives
+git clone https://github.com/dgrauet/ltx-2-mlx && cd ltx-2-mlx && uv sync --all-extras
+# then put .venv/bin on PATH, or export LTX2MLX_BIN=/path/to/ltx-2-mlx
+
+ollamadiffuser pull ltx-2.3-mlx-q8
+ollamadiffuser run ltx-2.3-mlx-q8
+
+# Text to video (4s at 24fps). Frame counts are 8k+1; `seconds` rounds for you.
+curl -X POST http://localhost:8000/api/generate/video \
+  -F prompt="a courtyard in the rain, slow pan" -F seconds=4 -o clip.mp4
+
+# Image to video — animate a still
+curl -X POST http://localhost:8000/api/generate/video \
+  -F prompt="she turns and smiles" -F image=@portrait.png -F seconds=4 -o clip.mp4
+
+# Audio to video — a voice drives the face
+curl -X POST http://localhost:8000/api/generate/video \
+  -F prompt="a woman speaking to camera" -F audio=@line.wav -o clip.mp4
+```
+
+Video models refuse the image endpoints rather than returning one frame of the clip, and
+`/api/generate/video` answers 400 (not 500) for the things a caller can fix: no model loaded, an image
+model loaded, ltx-2-mlx not installed, a frame count off the grid.
 
 **Hardware fit at a glance:**
 - **Mac Mini M4 16 GB** can run anything marked ✅ above (Q4 FLUX.1-schnell, FLUX.2 Klein 4B, Z-Image-Turbo).

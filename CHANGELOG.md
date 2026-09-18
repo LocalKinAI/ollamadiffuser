@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.22] - 2026-09-18
+
+### 🎬 Video on Apple Silicon — LTX-2 through ltx-2-mlx
+
+The `video` strategy was AnimateDiff, 16 frames of 512×512 from the SD1.5 era,
+with no registry entry pointing at it — and it returned one frame, so a video
+model behaved like a broken image model. Video now means LTX-2, through
+[ltx-2-mlx](https://github.com/dgrauet/ltx-2-mlx)'s pure-MLX port: text-to-video
+with 48 kHz stereo audio, image-to-video, audio-to-video, and LTX-2.5's
+predicted durations.
+
+Six registry entries — int4 / int8 / bf16 for LTX-2.3 and LTX-2.5 — sized from
+upstream's own table: 12 GB on disk and 16 GB of RAM at the low end, 42 GB and
+64 GB at the top. The 2.5 packs are marked gated, because they are.
+
+**Why this one shells out** when every other strategy imports its pipeline:
+ltx-2-mlx is a three-package monorepo that is not on PyPI, installs with
+`uv sync`, and downloads its own weight packs. Importing it would mean pinning
+three packages we do not build to reach an API its author does not support. Its
+CLI is that API. The cost is a subprocess; the gain is that `build_argv` is a
+pure function, so every mode, every memory flag and the `8k + 1` frame rule are
+covered by tests that need no weights and no MLX — 50 of them.
+
+New surfaces:
+
+- `engine.generate_video(prompt, output=..., seconds=...)` — separate from
+  `generate_image` rather than a flag on it, and a model that cannot make video
+  says so before anything downloads.
+- `POST /api/generate/video` — multipart, because the interesting inputs are
+  files (a reference image, an audio track). Returns the mp4 as the body with
+  `X-Output-Path` for the copy on disk, and answers **400** for everything a
+  caller can fix (no model, an image model, ltx-2-mlx missing, a frame count
+  off the grid) rather than a blanket 500.
+- `seconds=` anywhere frames are taken: nobody thinks in frames, and the
+  `8k + 1` grid (the VAE compresses time 8×) is not obvious. Halves round up,
+  spelled with `floor(x + 0.5)` rather than `round`, which rounds halves to
+  even and would send 13 up and 21 down for no reason a caller could predict.
+- `LTX2MLX_BIN`, plus discovery in `~/ltx-2-mlx/.venv/bin` and the other places
+  a `uv sync` checkout leaves the binary — the documented install is a git
+  clone, so it usually is not on PATH.
+
+Refusals are checked at load, not mid-generation: Apple Silicon, the binary,
+and ffmpeg (which the CLI needs to write the mp4). 183 tests pass.
+
 ## [2.0.21] - 2026-09-18
 
 ### 🍎 Eight more MLX families — the registry catches up with mflux

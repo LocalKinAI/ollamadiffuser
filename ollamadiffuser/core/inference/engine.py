@@ -50,6 +50,10 @@ def _get_strategy(model_type: str) -> InferenceStrategy:
         # Apple-Silicon-native inference via mflux. See issue #7.
         from .strategies.mlx_strategy import MLXStrategy
         return MLXStrategy()
+    elif model_type == "ltx-video-mlx":
+        # LTX-2 video on Apple Silicon, through the ltx-2-mlx CLI.
+        from .strategies.ltx_video_strategy import LTXVideoMLXStrategy
+        return LTXVideoMLXStrategy()
     else:
         raise ValueError(f"Unsupported model type: {model_type}")
 
@@ -190,6 +194,32 @@ class InferenceEngine:
             height=height,
             seed=seed,
             **gen_kwargs,
+        )
+
+    def generate_video(
+        self,
+        prompt: str,
+        output: Optional[str] = None,
+        seconds: Optional[float] = None,
+        **kwargs,
+    ):
+        """Generate a video with the current strategy, and return its path.
+
+        Separate from ``generate_image`` rather than a flag on it: a video is
+        a file with a duration and a frame rate, and the strategies that make
+        one take different arguments from the ones that make a picture. A
+        model that cannot do this says so here, before anything downloads.
+        """
+        if not self._strategy:
+            raise RuntimeError("No model loaded")
+        if not hasattr(self._strategy, "generate_video"):
+            name = getattr(self.model_config, "name", "this model")
+            raise RuntimeError(
+                f"{name} is not a video model — load one of the ltx-video-mlx "
+                f"entries (see `ollamadiffuser list`) to generate video."
+            )
+        return self._strategy.generate_video(
+            prompt=prompt, output=output, seconds=seconds, **kwargs
         )
 
     def unload(self):

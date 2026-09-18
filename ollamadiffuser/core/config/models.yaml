@@ -1573,3 +1573,155 @@ models:
       type: Apache 2.0
       requires_agreement: false
       commercial_use: true
+  ltx-2.3-mlx-q8:
+    repo_id: dgrauet/ltx-2.3-mlx-q8
+    model_type: ltx-video-mlx
+    variant: mlx-int8
+    parameters:
+      ltx_pack: dgrauet/ltx-2.3-mlx-q8
+      mode: two-stage
+      frames: 97
+      width: 704
+      height: 480
+      cfg_scale: 3.0
+    hardware_requirements:
+      min_vram_gb: 24
+      recommended_vram_gb: 32
+      min_ram_gb: 32
+      recommended_ram_gb: 64
+      disk_space_gb: 21
+      supported_devices:
+      - MPS
+      performance_notes: LTX-2.3 video on Apple Silicon at int8, through the ltx-2-mlx CLI. Text-to-video
+        with 48kHz stereo audio, image-to-video and audio-to-video. 97 frames is 4s at 24 fps; frame
+        counts must be 8k+1. Add low_ram=true on a 32 GB Mac. Not an image model — use generate_video().
+    license_info:
+      type: LTX-2 Community License
+      requires_agreement: false
+      commercial_use: false
+  ltx-2.3-mlx-q4:
+    repo_id: dgrauet/ltx-2.3-mlx-q4
+    model_type: ltx-video-mlx
+    variant: mlx-int4
+    parameters:
+      ltx_pack: dgrauet/ltx-2.3-mlx-q4
+      mode: distilled
+      frames: 97
+      width: 704
+      height: 480
+      low_ram: true
+    hardware_requirements:
+      min_vram_gb: 12
+      recommended_vram_gb: 16
+      min_ram_gb: 16
+      recommended_ram_gb: 32
+      disk_space_gb: 12
+      supported_devices:
+      - MPS
+      performance_notes: LTX-2.3 video at int4 — the pack that fits a 16 GB Mac, with block streaming
+        on by default. Distilled mode for speed; two-stage still works but wants more room.
+    license_info:
+      type: LTX-2 Community License
+      requires_agreement: false
+      commercial_use: false
+  ltx-2.3-mlx-bf16:
+    repo_id: dgrauet/ltx-2.3-mlx
+    model_type: ltx-video-mlx
+    variant: mlx-bf16
+    parameters:
+      ltx_pack: dgrauet/ltx-2.3-mlx
+      mode: two-stages-hq
+      frames: 97
+      width: 1280
+      height: 720
+      cfg_scale: 3.0
+    hardware_requirements:
+      min_vram_gb: 48
+      recommended_vram_gb: 64
+      min_ram_gb: 64
+      recommended_ram_gb: 96
+      disk_space_gb: 42
+      supported_devices:
+      - MPS
+      performance_notes: LTX-2.3 video at bf16, the full-quality pack — 64 GB+ Macs. HQ mode uses the
+        res_2s sampler. For 720p and longer clips, tile_frames and tile_spatial cap the attention
+        activations that would otherwise run out of memory.
+    license_info:
+      type: LTX-2 Community License
+      requires_agreement: false
+      commercial_use: false
+  ltx-2.5-mlx-q8:
+    repo_id: dgrauet/ltx-2.5-mlx-q8
+    model_type: ltx-video-mlx
+    variant: mlx-int8
+    parameters:
+      ltx_pack: dgrauet/ltx-2.5-mlx-q8
+      mode: distilled
+      width: 704
+      height: 480
+      auto_duration: 2.0:8.0
+    hardware_requirements:
+      min_vram_gb: 24
+      recommended_vram_gb: 32
+      min_ram_gb: 32
+      recommended_ram_gb: 64
+      disk_space_gb: 22
+      supported_devices:
+      - MPS
+      performance_notes: LTX-2.5 video at int8. The 2.5 packs predict their own duration, so frames is
+        optional here and auto_duration clamps it in seconds instead. Gated on Hugging Face — accept the
+        licence on the model page first.
+    license_info:
+      type: LTX-2 Community License
+      requires_agreement: true
+      commercial_use: false
+  ltx-2.5-mlx-q4:
+    repo_id: dgrauet/ltx-2.5-mlx-q4
+    model_type: ltx-video-mlx
+    variant: mlx-int4
+    parameters:
+      ltx_pack: dgrauet/ltx-2.5-mlx-q4
+      mode: distilled
+      width: 704
+      height: 480
+      auto_duration: 2.0:8.0
+      low_ram: true
+    hardware_requirements:
+      min_vram_gb: 12
+      recommended_vram_gb: 16
+      min_ram_gb: 16
+      recommended_ram_gb: 32
+      disk_space_gb: 13
+      supported_devices:
+      - MPS
+      performance_notes: LTX-2.5 video at int4, for 16 GB Macs, with block streaming on. Duration is
+        predicted by the pack unless frames is passed. Gated on Hugging Face.
+    license_info:
+      type: LTX-2 Community License
+      requires_agreement: true
+      commercial_use: false
+  ltx-2.5-mlx-bf16:
+    repo_id: dgrauet/ltx-2.5-mlx
+    model_type: ltx-video-mlx
+    variant: mlx-bf16
+    parameters:
+      ltx_pack: dgrauet/ltx-2.5-mlx
+      mode: two-stages-hq
+      width: 1280
+      height: 720
+      cfg_scale: 3.0
+      auto_duration: 2.0:10.0
+    hardware_requirements:
+      min_vram_gb: 48
+      recommended_vram_gb: 64
+      min_ram_gb: 64
+      recommended_ram_gb: 96
+      disk_space_gb: 44
+      supported_devices:
+      - MPS
+      performance_notes: LTX-2.5 video at bf16 — the best this runtime does on a 64 GB+ Mac, with the
+        2.5 pipelines (keyframe, retake, extend, LipDub) and predicted duration. Gated on Hugging Face.
+    license_info:
+      type: LTX-2 Community License
+      requires_agreement: true
+      commercial_use: false
