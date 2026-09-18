@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.23] - 2026-09-18
+
+### 🔧 The LTX argv, checked against the binary instead of the README
+
+`build_argv` was written from ltx-2-mlx's documentation. Running its `--help`
+on the machine that will serve video found two things the docs do not say, both
+of which lose a generation at argparse — before a weight is read, with a
+message about arguments rather than about video:
+
+- **`--frame-rate` is mandatory on `generate`, not just `a2v`.** Nothing about
+  a text-to-video call suggests a frame rate is required; it is, so it is now
+  always sent, defaulting to the pack's trained 24.
+- **`a2v` takes no mode, no `--steps` and no `--enhance-prompt`** (0.15.6).
+  The README reads as though the pipeline modes apply everywhere. They do not,
+  and the binary answers "unrecognized arguments" to all three, so the audio
+  path no longer forwards them — and it does pass `--frames`, `--height` and
+  `--width`, which it does accept.
+
+`seconds=` now converts at the requested frame rate rather than always 24: four
+seconds at 30 fps is 121 frames, and rounding that against 24 handed back 3.2s
+of video. 191 tests pass, 55 of them on this argv.
+
 ## [2.0.22] - 2026-09-18
 
 ### 🎬 Video on Apple Silicon — LTX-2 through ltx-2-mlx

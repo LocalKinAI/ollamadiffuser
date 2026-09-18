@@ -27,8 +27,10 @@ Tracking issue: https://github.com/LocalKinAI/ollamadiffuser/issues/7
 """
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import platform
+from pathlib import Path
 import random
 from typing import Optional
 
@@ -113,6 +115,24 @@ def is_apple_silicon() -> bool:
     return platform.system() == "Darwin" and platform.machine() == "arm64"
 
 
+def looks_like_model_dir(path: Optional[str]) -> bool:
+    """True when ``path`` holds a downloaded model rather than nothing.
+
+    Loose on purpose: mflux families differ in layout — a diffusers tree with
+    `model_index.json`, a flat directory of safetensors — and the only thing
+    every one of them has is weights and some json beside them.
+    """
+    if not path:
+        return False
+    folder = Path(path)
+    if not folder.is_dir():
+        return False
+    for marker in ("model_index.json", "config.json", "transformer/config.json"):
+        if (folder / marker).is_file():
+            return True
+    return any(folder.glob("*.safetensors")) or any(folder.glob("*/*.safetensors"))
+
+
 # --------------------------------------------------------------------------
 # Strategy
 # --------------------------------------------------------------------------
@@ -143,6 +163,21 @@ class MLXStrategy(InferenceStrategy):
         self._mlx_model = None
         # Cached for capability checks in generate() (e.g. Kontext needs image).
         self._variant: Optional[str] = None
+        # Every MLX call runs on this one thread; see _mlx_call.
+        self._runner: Optional[concurrent.futures.ThreadPoolExecutor] = None
+
+    # MLX's streams are per-thread: an array built on one thread cannot be
+    # evaluated on another, and the API generates in a thread pool. Measured on
+    # the box — model loaded on the main thread, POST /api/generate answered
+    # with "There is no Stream(cpu, 0) in current thread" from mx.eval inside
+    # mflux. So building the model and running it both go through one thread of
+    # our own. The endpoint stays async; it waits on this thread's result.
+    def _mlx_call(self, fn, *args, **kwargs):
+        if self._runner is None:
+            self._runner = concurrent.futures.ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="mlx"
+            )
+        return self._runner.submit(fn, *args, **kwargs).result()
 
     # ----- Loading ------------------------------------------------------
 
@@ -198,11 +233,39 @@ class MLXStrategy(InferenceStrategy):
             f"Loading mflux {variant} model '{mlx_model_name}' "
             f"(quantize={quantize})..."
         )
+        # Load what `pull` already downloaded. Without this, mflux resolves the
+        # model from its own name and fetches the repo a second time into the
+        # Hugging Face cache — measured on the box: a 36 GB pull sitting unused
+        # while the server downloaded the same weights again on first load.
+        local_dir = getattr(model_config, "path", None)
+        local_dir = str(local_dir) if looks_like_model_dir(local_dir) else None
         try:
-            self._mlx_model = model_cls(quantize=quantize, model_config=mflux_config)
+            if local_dir:
+                logger.info(f"Using the downloaded weights at {local_dir}")
+                self._mlx_model = self._mlx_call(
+                    model_cls, quantize=quantize, model_config=mflux_config,
+                    model_path=local_dir,
+                )
+            else:
+                self._mlx_model = self._mlx_call(
+                    model_cls, quantize=quantize, model_config=mflux_config
+                )
         except Exception as e:
-            logger.error(f"Failed to load MLX model: {e}", exc_info=True)
-            return False
+            if not local_dir:
+                logger.error(f"Failed to load MLX model: {e}", exc_info=True)
+                return False
+            # A filtered download can be missing a file this family wants. The
+            # hub still has it, so say so and go there rather than failing.
+            logger.warning(
+                f"Could not load from {local_dir} ({e}); falling back to the hub."
+            )
+            try:
+                self._mlx_model = self._mlx_call(
+                    model_cls, quantize=quantize, model_config=mflux_config
+                )
+            except Exception as e2:
+                logger.error(f"Failed to load MLX model: {e2}", exc_info=True)
+                return False
 
         # Cache the variant so generate() can branch on capabilities.
         self._variant = variant
@@ -484,7 +547,7 @@ class MLXStrategy(InferenceStrategy):
             f"size={width}x{height}"
         )
         try:
-            generated = self._mlx_model.generate_image(**gen_kwargs)
+            generated = self._mlx_call(self._mlx_model.generate_image, **gen_kwargs)
             # generated is mflux.utils.generated_image.GeneratedImage; .image is PIL.
             return self._sanitize_image(generated.image)
         except Exception as e:
@@ -526,6 +589,9 @@ class MLXStrategy(InferenceStrategy):
         if self._mlx_model is not None:
             del self._mlx_model
             self._mlx_model = None
+        if self._runner is not None:
+            self._runner.shutdown(wait=False)
+            self._runner = None
         self.pipeline = None
         self.model_config = None
         self.current_lora = None

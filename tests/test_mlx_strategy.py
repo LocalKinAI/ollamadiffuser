@@ -158,6 +158,17 @@ class TestDispatch:
     def test_is_apple_silicon_returns_bool(self):
         assert isinstance(is_apple_silicon(), bool)
 
+    def test_looks_like_model_dir(self, tmp_path):
+        assert mlx_strategy.looks_like_model_dir(None) is False
+        assert mlx_strategy.looks_like_model_dir(str(tmp_path / "nope")) is False
+        assert mlx_strategy.looks_like_model_dir(str(tmp_path)) is False
+        (tmp_path / "model_index.json").write_text("{}")
+        assert mlx_strategy.looks_like_model_dir(str(tmp_path)) is True
+        flat = tmp_path / "flat"
+        (flat / "sub").mkdir(parents=True)
+        (flat / "sub" / "w.safetensors").write_bytes(b"\x00")
+        assert mlx_strategy.looks_like_model_dir(str(flat)) is True
+
 
 # --------------------------------------------------------------------------
 # Platform refusal
@@ -331,6 +342,63 @@ class TestVariantResolution:
 
 @pytest.mark.skipif(not is_apple_silicon(), reason="MLX only runs on Apple Silicon")
 class TestLoadAndGenerate:
+    def test_load_uses_the_weights_pull_downloaded(self, tmp_path):
+        """No second copy: `pull` already has them."""
+        (tmp_path / "model_index.json").write_text("{}")
+        (tmp_path / "weights.safetensors").write_bytes(b"\x00")
+        cls_mock, _, mflux_config_mock = _stub_resolution()
+        s = MLXStrategy()
+        with patch.object(MLXStrategy, "_resolve_model_and_config",
+                          return_value=(cls_mock, mflux_config_mock)):
+            ok = s.load(_make_config(path=str(tmp_path)), device="mps")
+        assert ok is True
+        cls_mock.assert_called_once_with(
+            quantize=8, model_config=mflux_config_mock, model_path=str(tmp_path)
+        )
+
+    def test_load_falls_back_to_the_hub_when_the_local_copy_will_not_do(self, tmp_path):
+        """A filtered download can be missing a file; the hub still has it."""
+        (tmp_path / "model_index.json").write_text("{}")
+        cls_mock, instance, mflux_config_mock = _stub_resolution()
+        calls = []
+
+        def _maybe_fail(**kwargs):
+            calls.append(kwargs)
+            if "model_path" in kwargs:
+                raise FileNotFoundError("text_encoder/model.safetensors")
+            return instance
+
+        cls_mock.side_effect = _maybe_fail
+        s = MLXStrategy()
+        with patch.object(MLXStrategy, "_resolve_model_and_config",
+                          return_value=(cls_mock, mflux_config_mock)):
+            ok = s.load(_make_config(path=str(tmp_path)), device="mps")
+        assert ok is True
+        assert len(calls) == 2 and "model_path" not in calls[1]
+
+    def test_every_mlx_call_happens_on_one_thread(self, tmp_path):
+        """MLX streams are per-thread: build and run must share a thread."""
+        import threading
+        (tmp_path / "model_index.json").write_text("{}")
+        threads = []
+        cls_mock, instance, mflux_config_mock = _stub_resolution()
+
+        def _record(**kwargs):
+            threads.append(threading.current_thread().name)
+            return instance
+
+        cls_mock.side_effect = _record
+        s = MLXStrategy()
+        with patch.object(MLXStrategy, "_resolve_model_and_config",
+                          return_value=(cls_mock, mflux_config_mock)):
+            assert s.load(_make_config(path=str(tmp_path)), device="mps") is True
+        s.generate("a cat", seed=1)
+        # The generate call goes through the same runner; the log records the
+        # constructor's thread, and it is not the caller's.
+        assert threads and threads[0].startswith("mlx")
+        assert threads[0] != threading.current_thread().name
+        s.unload()
+
     def test_load_calls_class_constructor_with_quantize_and_config(self):
         cls_mock, _, mflux_config_mock = _stub_resolution()
         s = MLXStrategy()

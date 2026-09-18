@@ -125,6 +125,17 @@ class TestTextToVideo:
         assert "--enhance-prompt" not in _argv(frames=97)
         assert "--enhance-prompt" in _argv(frames=97, enhance_prompt=True)
 
+    def test_frame_rate_is_always_sent(self):
+        """The CLI makes --frame-rate mandatory on generate as well as a2v.
+
+        Nothing about a text-to-video call suggests it, and leaving it out
+        fails at argparse rather than anywhere informative.
+        """
+        argv = _argv(frames=97)
+        assert argv[argv.index("--frame-rate") + 1] == "24"
+        assert _argv(frames=97, frame_rate=30)[
+            _argv(frames=97, frame_rate=30).index("--frame-rate") + 1] == "30"
+
 
 # --------------------------------------------------------------------------
 # Image- and audio-conditioned
@@ -140,18 +151,33 @@ class TestConditioned:
         argv = _argv(audio="/tmp/voice.wav")
         assert argv[1] == "a2v"
         assert argv[argv.index("--audio") + 1] == "/tmp/voice.wav"
-        # a2v takes a frame rate, not a frame count: the audio is the length.
+        # The audio is the length, so no frame count is sent unless asked for.
         assert argv[argv.index("--frame-rate") + 1] == "24"
         assert "--frames" not in argv
         assert "--two-stage" not in argv
 
+    def test_audio_takes_no_pipeline_flags(self):
+        """a2v accepts neither a mode, nor --steps, nor --enhance-prompt.
+
+        Checked against ltx-2-mlx 0.15.6 itself, which answers "unrecognized
+        arguments" to all three — the README reads as though the modes apply
+        everywhere, and sending one loses the generation at argparse.
+        """
+        argv = _argv(audio="/tmp/voice.wav", mode="two-stages-hq",
+                     steps=8, enhance_prompt=True)
+        assert argv[1] == "a2v"
+        for flag in ("--two-stages-hq", "--two-stage", "--distilled",
+                     "--one-stage", "--steps", "--enhance-prompt"):
+            assert flag not in argv
+
     def test_audio_with_reference_image_and_start(self):
         argv = _argv(audio="/tmp/voice.wav", image="/tmp/her.png",
-                     frame_rate=24, audio_start=1.5, mode="two-stages-hq")
+                     frames=97, frame_rate=30, audio_start=1.5)
         assert argv[1] == "a2v"
         assert argv[argv.index("--image") + 1] == "/tmp/her.png"
         assert argv[argv.index("--audio-start") + 1] == "1.5"
-        assert "--two-stages-hq" in argv
+        assert argv[argv.index("--frame-rate") + 1] == "30"
+        assert argv[argv.index("--frames") + 1] == "97"
 
 
 # --------------------------------------------------------------------------

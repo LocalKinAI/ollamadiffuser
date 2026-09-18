@@ -184,10 +184,16 @@ def build_argv(
 ) -> list[str]:
     """The command line for one generation.
 
-    Audio input picks the ``a2v`` subcommand, which is a different shape from
-    ``generate``: it takes ``--frame-rate`` rather than a frame count, and its
-    only pipeline choice is standard or HQ. Everything else is ``generate``,
-    where the mode is a flag and ``-f`` carries the length.
+    ``--frame-rate`` is mandatory on both subcommands — the CLI enforces it at
+    argparse, so a call without it dies before a single weight is read. It
+    defaults to the pack's trained 24.
+
+    Audio input picks the ``a2v`` subcommand, which is a narrower shape than
+    ``generate``: the audio carries the length, and as of ltx-2-mlx 0.15.6 it
+    takes no mode flag, no ``--steps`` and no ``--enhance-prompt`` (verified
+    against the binary, not the README — argparse answers "unrecognized
+    arguments" to all three). Everything else is ``generate``, where the mode
+    is a flag and ``-f`` carries the length.
     """
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}, got {mode!r}")
@@ -200,9 +206,11 @@ def build_argv(
     if audio:
         argv = [binary, "a2v", "--audio", audio, "--output", output,
                 "--prompt", prompt, "--model", pack]
-        argv += ["--frame-rate", str(frame_rate or TRAINED_FPS)]
-        if mode == "two-stages-hq":
-            argv.append("--two-stages-hq")
+        # Length comes from the audio; a frame count is still allowed, and
+        # anything else about the pipeline is not this subcommand's to choose.
+        if frames is not None:
+            argv += ["--frames", str(frames)]
+        argv += ["--height", str(height), "--width", str(width)]
         if audio_start is not None:
             argv += ["--audio-start", str(audio_start)]
     else:
@@ -225,7 +233,11 @@ def build_argv(
             argv.append("--one-stage")
         if steps is not None:
             argv += ["--steps", str(steps)]
+        if enhance_prompt:
+            argv.append("--enhance-prompt")
 
+    # Mandatory, on both.
+    argv += ["--frame-rate", str(frame_rate or TRAINED_FPS)]
     if image:
         argv += ["--image", image]
     if seed is not None:
@@ -238,8 +250,6 @@ def build_argv(
         argv += ["--stage1-steps", str(stage1_steps)]
     if stage2_steps is not None:
         argv += ["--stage2-steps", str(stage2_steps)]
-    if enhance_prompt:
-        argv.append("--enhance-prompt")
     if low_ram:
         argv.append("--low-ram")
     if tile_frames is not None:
@@ -355,7 +365,10 @@ class LTXVideoMLXStrategy(InferenceStrategy):
         options.update(argv_options(kwargs))
         options.pop("pack", None)          # the pack is the loaded model's
         if "frames" not in options and seconds:
-            options["frames"] = frames_for_seconds(seconds)
+            # At the requested rate, not always 24: four seconds at 30 fps is
+            # 121 frames, and rounding it against 24 would hand back 3.2s.
+            options["frames"] = frames_for_seconds(
+                seconds, int(options.get("frame_rate") or TRAINED_FPS))
 
         argv = build_argv(self.binary, prompt, str(target), pack=self.pack, **options)
         logger.info("LTX-2: %s", " ".join(argv[1:]))
