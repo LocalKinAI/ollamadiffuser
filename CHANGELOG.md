@@ -5,6 +5,61 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.24] - 2026-09-18
+
+### 🔒 A refused download looked like a finished one
+
+Pulling a gated pack printed `Fetching 21 files: 100% | 0 MB / 0 MB`, exited
+0, and left no model behind. The 403 was there — logged once at WARNING on
+attempt 1, then buried under four more attempts and their progress bars,
+because the retry loop treated "you are not in the authorized list" as a
+network hiccup.
+
+- **Permission errors fail on the first try**, with the sentence that fixes
+  them: which page to open, that it is `Request access` you are looking for,
+  and `hf auth login` — `huggingface-cli` was retired in huggingface_hub 1.x
+  and now only prints a deprecation notice, which the old messages still
+  told people to run.
+- **`hf auth login` counts as being logged in.** The token check read only
+  `HF_TOKEN`, so someone who had just logged in was told "no HuggingFace
+  token found" and then watched the gated download fail anyway.
+- **Progress totals are real.** `repo_info` was called without
+  `files_metadata=True`, so every size came back `None` and a 30 GB download
+  rendered as `0 MB / 0 MB`.
+
+### 🎬 The LTX packs, audited against the packs
+
+The six video entries were written from upstream's README. With the weights
+now downloadable and the pipelines readable, each one was checked against
+what its own mode actually loads — read out of ltx-2-mlx 0.15.6, not guessed:
+
+| Entry | Was | Is |
+|---|---|---|
+| `ltx-2.3-mlx-q4` | both distilled transformers, 36 GB claimed | the versioned one only — **21 GB** |
+| `ltx-2.3-mlx-q8` | dev only (two-stage would die at the stage 1→2 swap) | dev + distilled + distilled LoRA, **56 GB** |
+| `ltx-2.3-mlx-bf16` | dev only | all three, **88 GB** |
+| `ltx-2.5-mlx-q4` | no text encoder, no duration head | both, **29 GB** |
+| `ltx-2.5-mlx-q8` | same | both, **43 GB** |
+| `ltx-2.5-mlx-bf16` | dev only, no text encoder | everything the mode loads, **112 GB** |
+
+What the source says, now encoded in tests rather than in a README summary:
+stage 1 of two-stage takes `transformer-dev`; stage 2 either streams the
+pre-fused `transformer-distilled*` under `--low-ram` or fuses the distilled
+LoRA, so a two-stage entry needs both on disk; `--distilled` takes the
+distilled transformer and the resolver **prefers the versioned file**
+(`-1.1`), which is why fetching the unversioned one too was 10.5 GB wasted;
+and a 2.5 pack carries its own `text_encoder.safetensors` plus the
+`duration_head.safetensors` behind predicted durations, where a 2.3 pack has
+neither and the CLI downloads Gemma (8 GB) instead.
+
+`ltx-2.3-mlx-q4` was the entry verified end to end, and it worked — its only
+fault was paying for a transformer it never loaded. The other five were
+wrong in ways that would have surfaced minutes into a generation.
+
+Every disk figure is now the sum of what the patterns would actually
+download, and a test asserts that, with the packs' real file lists and sizes
+in it. 208 tests pass.
+
 ## [2.0.23] - 2026-09-18
 
 ### 🔧 The LTX argv, checked against the binary instead of the README

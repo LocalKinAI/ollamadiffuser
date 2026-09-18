@@ -195,14 +195,14 @@ models/flux-dev-gguf/
 mkdir -p models/flux-dev-gguf
 
 # Download GGUF model (choose quantization)
-huggingface-cli download city96/FLUX.1-dev-gguf \
+hf download city96/FLUX.1-dev-gguf \
   flux1-dev-Q4_K_S.gguf --local-dir models/flux-dev-gguf
 
 # Download required components
-huggingface-cli download black-forest-labs/FLUX.1-dev \
+hf download black-forest-labs/FLUX.1-dev \
   ae.safetensors --local-dir models/flux-dev-gguf
 
-huggingface-cli download comfyanonymous/flux_text_encoders \
+hf download comfyanonymous/flux_text_encoders \
   clip_l.safetensors t5xxl_fp16.safetensors \
   --local-dir models/flux-dev-gguf
 ```

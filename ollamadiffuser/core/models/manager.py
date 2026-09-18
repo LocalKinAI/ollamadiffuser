@@ -170,7 +170,9 @@ class ModelManager:
             if license_info:
                 progress_callback(f"📄 License: {license_info.get('type', 'Unknown')}")
                 if license_info.get('requires_agreement', False):
-                    progress_callback(f"🔑 HuggingFace token required - ensure HF_TOKEN is set")
+                    progress_callback(
+                        "🔑 Gated: needs `hf auth login`, and access granted on "
+                        f"https://huggingface.co/{model_info['repo_id']}")
                 else:
                     progress_callback(f"✅ No HuggingFace token required")
         
@@ -205,13 +207,21 @@ class ModelManager:
         
         try:
             # Ensure HuggingFace token is set
-            if settings.hf_token:
-                login(token=settings.hf_token)
+            # A token in the environment is worth installing into the hub's
+            # own store; one that is already there needs nothing doing. Only
+            # the absence of both is worth warning about.
+            if os.environ.get('HF_TOKEN'):
+                login(token=os.environ['HF_TOKEN'])
                 if progress_callback:
-                    progress_callback(f"🔑 Authenticated with HuggingFace")
+                    progress_callback(f"🔑 Authenticated with HuggingFace (HF_TOKEN)")
+            elif settings.hf_token:
+                if progress_callback:
+                    progress_callback(f"🔑 Using the token from `hf auth login`")
             else:
                 if progress_callback:
-                    progress_callback(f"⚠️ No HuggingFace token found - some models may not be accessible")
+                    progress_callback(
+                        "⚠️ Not logged in to HuggingFace — gated models will "
+                        "refuse. Log in with: hf auth login")
             
             logger.info(f"Downloading model: {model_name}")
             if progress_callback:

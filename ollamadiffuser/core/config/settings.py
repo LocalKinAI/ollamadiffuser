@@ -5,6 +5,15 @@ import json
 import logging
 from dataclasses import dataclass
 
+def _stored_hf_token():
+    """The token from a `hf auth login`, or None. Never raises."""
+    try:
+        from huggingface_hub import get_token
+        return get_token()
+    except Exception:
+        return None
+
+
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -44,7 +53,11 @@ class Settings:
         self.server = ServerConfig()
         self.models: Dict[str, ModelConfig] = {}
         self.current_model: Optional[str] = None
-        self.hf_token: Optional[str] = os.environ.get('HF_TOKEN')
+        # `hf auth login` stores a token under ~/.cache/huggingface rather
+        # than in the environment, and get_token() reads both. Reading only
+        # HF_TOKEN reported "no token found" to someone who had just logged
+        # in, and then failed the gated download it had already warned about.
+        self.hf_token: Optional[str] = os.environ.get('HF_TOKEN') or _stored_hf_token()
         
         # Load configuration file
         self.load_config()

@@ -9,12 +9,60 @@ import logging
 from typing import Optional, Callable, Any, Dict
 from pathlib import Path
 from huggingface_hub import snapshot_download, hf_hub_download, HfApi
+from huggingface_hub.errors import (
+    EntryNotFoundError,
+    GatedRepoError,
+    HfHubHTTPError,
+    RepositoryNotFoundError,
+    RevisionNotFoundError,
+)
 from tqdm import tqdm
 import threading
 import requests
 import fnmatch
 
 logger = logging.getLogger(__name__)
+
+# Errors that retrying cannot fix: the repo needs access we do not have, or
+# it is not there. Retried anyway, a 403 sleeps through five attempts while
+# the progress bars keep drawing, and the one line that says what to do
+# scrolls away under them — which is how a gated pack came back looking like
+# a finished download of nothing.
+_PERMANENT_ERRORS = (
+    GatedRepoError,
+    RepositoryNotFoundError,
+    RevisionNotFoundError,
+    EntryNotFoundError,
+)
+_PERMANENT_STATUSES = {401, 403, 404}
+
+
+def access_problem(error: Exception) -> Optional[str]:
+    """What to do about ``error``, when no amount of retrying would help.
+
+    Returns a sentence for the user, or None when the error is the ordinary
+    kind that a retry might get past.
+    """
+    if isinstance(error, GatedRepoError):
+        repo = getattr(error, "repo_id", None) or ""
+        where = f"https://huggingface.co/{repo}" if repo else "the model page"
+        return (f"this repo is gated and this account is not approved yet: open {where}, "
+                f"click Request access and wait for the author. If you were already "
+                f"approved, log in first with: hf auth login")
+    if isinstance(error, (RepositoryNotFoundError, RevisionNotFoundError)):
+        return ("no such repo (or it is private): check the repo_id, and for a private "
+                "one log in first with: hf auth login")
+    if isinstance(error, EntryNotFoundError):
+        return "the repo does not have that file: check allow_patterns against its file list."
+    if isinstance(error, HfHubHTTPError):
+        status = getattr(getattr(error, "response", None), "status_code", None)
+        if status in _PERMANENT_STATUSES:
+            if status == 401:
+                return "HuggingFace says unauthorized (401): log in with: hf auth login"
+            if status == 403:
+                return "HuggingFace refused (403): this repo needs access granted first."
+            return "HuggingFace has no such thing (404): check the repo_id and file names."
+    return None
 
 class EnhancedProgressTracker:
     """Enhanced progress tracker that provides Ollama-style detailed progress information"""
@@ -174,7 +222,10 @@ def get_repo_file_list(repo_id: str) -> Dict[str, int]:
     """Get list of files in repository with their sizes"""
     try:
         api = HfApi()
-        repo_info = api.repo_info(repo_id=repo_id)
+        # files_metadata=True is what carries the sizes. Without it every
+        # sibling's size is None, the total comes out 0, and the progress bar
+        # renders a 30 GB download as "0 MB / 0 MB — 100%".
+        repo_info = api.repo_info(repo_id=repo_id, files_metadata=True)
         
         file_sizes = {}
         for sibling in repo_info.siblings:
@@ -359,7 +410,17 @@ def robust_snapshot_download(
         except Exception as e:
             last_exception = e
             error_msg = str(e)
-            
+
+            # A permission error on attempt 1 is a permission error on attempt
+            # 5. Say what to do and stop, rather than sleeping through four
+            # more attempts with the reason buried under progress bars.
+            advice = access_problem(e)
+            if advice or isinstance(e, _PERMANENT_ERRORS):
+                logger.error(f"Download refused for {repo_id}: {error_msg}")
+                if progress_callback:
+                    progress_callback(f"❌ Cannot download: {advice or error_msg}")
+                raise RuntimeError(f"{repo_id}: {advice or error_msg}") from e
+
             # Log the specific error
             logger.warning(f"Download attempt {attempt + 1} failed: {error_msg}")
             

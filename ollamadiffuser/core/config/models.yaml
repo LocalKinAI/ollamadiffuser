@@ -1581,14 +1581,17 @@ models:
   ltx-2.3-mlx-q8:
     repo_id: dgrauet/ltx-2.3-mlx-q8
     # Only this entry's own transformer: the pack ships three, one per mode.
+    # two-stage: dev for stage 1, and stage 2 either streams the pre-fused distilled file (--low-ram) or fuses the distilled LoRA
     allow_patterns:
-    - "transformer-dev.safetensors"
-    - "connector.safetensors"
+    - transformer-dev.safetensors
+    - transformer-distilled-1.1.safetensors
+    - ltx-2.3-22b-distilled-lora-384-1.1.safetensors
+    - connector.safetensors
     - "*vae*.safetensors"
-    - "vocoder.safetensors"
+    - vocoder.safetensors
     - "*upscaler*"
     - "*.json"
-    - "LICENSE"
+    - LICENSE
     model_type: ltx-video-mlx
     variant: mlx-int8
     parameters:
@@ -1603,7 +1606,7 @@ models:
       recommended_vram_gb: 32
       min_ram_gb: 32
       recommended_ram_gb: 64
-      disk_space_gb: 34
+      disk_space_gb: 56
       supported_devices:
       - MPS
       performance_notes: LTX-2.3 video on Apple Silicon at int8, through the ltx-2-mlx CLI. Text-to-video
@@ -1616,14 +1619,15 @@ models:
   ltx-2.3-mlx-q4:
     repo_id: dgrauet/ltx-2.3-mlx-q4
     # Distilled mode only, which is what a 16 GB Mac runs.
+    # the resolver prefers the versioned distilled file, so only that one is fetched
     allow_patterns:
-    - "transformer-distilled*.safetensors"
-    - "connector.safetensors"
+    - transformer-distilled-1.1.safetensors
+    - connector.safetensors
     - "*vae*.safetensors"
-    - "vocoder.safetensors"
+    - vocoder.safetensors
     - "*upscaler*"
     - "*.json"
-    - "LICENSE"
+    - LICENSE
     model_type: ltx-video-mlx
     variant: mlx-int4
     parameters:
@@ -1638,7 +1642,7 @@ models:
       recommended_vram_gb: 16
       min_ram_gb: 16
       recommended_ram_gb: 32
-      disk_space_gb: 36
+      disk_space_gb: 21
       supported_devices:
       - MPS
       performance_notes: LTX-2.3 video at int4 — the pack that fits a 16 GB Mac, with block streaming
@@ -1650,14 +1654,17 @@ models:
   ltx-2.3-mlx-bf16:
     repo_id: dgrauet/ltx-2.3-mlx
     # Only this entry's own transformer: the pack ships three, one per mode.
+    # same three weights as q8, at bf16
     allow_patterns:
-    - "transformer-dev.safetensors"
-    - "connector.safetensors"
+    - transformer-dev.safetensors
+    - transformer-distilled-1.1.safetensors
+    - ltx-2.3-22b-distilled-lora-384-1.1.safetensors
+    - connector.safetensors
     - "*vae*.safetensors"
-    - "vocoder.safetensors"
+    - vocoder.safetensors
     - "*upscaler*"
     - "*.json"
-    - "LICENSE"
+    - LICENSE
     model_type: ltx-video-mlx
     variant: mlx-bf16
     parameters:
@@ -1672,7 +1679,7 @@ models:
       recommended_vram_gb: 64
       min_ram_gb: 64
       recommended_ram_gb: 96
-      disk_space_gb: 53
+      disk_space_gb: 88
       supported_devices:
       - MPS
       performance_notes: LTX-2.3 video at bf16, the full-quality pack — 64 GB+ Macs. HQ mode uses the
@@ -1685,14 +1692,17 @@ models:
   ltx-2.5-mlx-q8:
     repo_id: dgrauet/ltx-2.5-mlx-q8
     # Only this entry's own transformer: the pack ships three, one per mode.
+    # same as q4 at int8
     allow_patterns:
-    - "transformer-distilled*"
-    - "connector.safetensors"
+    - transformer-distilled.safetensors
+    - text_encoder.safetensors
+    - duration_head.safetensors
+    - connector.safetensors
     - "*vae*.safetensors"
-    - "vocoder.safetensors"
+    - vocoder.safetensors
     - "*upscaler*"
     - "*.json"
-    - "LICENSE"
+    - LICENSE
     model_type: ltx-video-mlx
     variant: mlx-int8
     parameters:
@@ -1706,7 +1716,7 @@ models:
       recommended_vram_gb: 32
       min_ram_gb: 32
       recommended_ram_gb: 64
-      disk_space_gb: 32
+      disk_space_gb: 43
       supported_devices:
       - MPS
       performance_notes: LTX-2.5 video at int8. The 2.5 packs predict their own duration, so frames is
@@ -1719,14 +1729,17 @@ models:
   ltx-2.5-mlx-q4:
     repo_id: dgrauet/ltx-2.5-mlx-q4
     # Distilled mode only, which is what a 16 GB Mac runs.
+    # 2.5 packs carry their own text encoder (no Gemma download) and the duration head
     allow_patterns:
-    - "transformer-distilled*.safetensors"
-    - "connector.safetensors"
+    - transformer-distilled.safetensors
+    - text_encoder.safetensors
+    - duration_head.safetensors
+    - connector.safetensors
     - "*vae*.safetensors"
-    - "vocoder.safetensors"
+    - vocoder.safetensors
     - "*upscaler*"
     - "*.json"
-    - "LICENSE"
+    - LICENSE
     model_type: ltx-video-mlx
     variant: mlx-int4
     parameters:
@@ -1741,7 +1754,7 @@ models:
       recommended_vram_gb: 16
       min_ram_gb: 16
       recommended_ram_gb: 32
-      disk_space_gb: 22
+      disk_space_gb: 29
       supported_devices:
       - MPS
       performance_notes: LTX-2.5 video at int4, for 16 GB Macs, with block streaming on. Duration is
@@ -1753,14 +1766,19 @@ models:
   ltx-2.5-mlx-bf16:
     repo_id: dgrauet/ltx-2.5-mlx
     # Only this entry's own transformer: the pack ships three, one per mode.
+    # two-stages-hq at bf16: every weight in the pack but the unused quantised ones
     allow_patterns:
-    - "transformer-dev.safetensors"
-    - "connector.safetensors"
+    - transformer-dev.safetensors
+    - transformer-distilled.safetensors
+    - ltx-2.5-22b-distilled-lora-450-bf16.safetensors
+    - text_encoder.safetensors
+    - duration_head.safetensors
+    - connector.safetensors
     - "*vae*.safetensors"
-    - "vocoder.safetensors"
+    - vocoder.safetensors
     - "*upscaler*"
     - "*.json"
-    - "LICENSE"
+    - LICENSE
     model_type: ltx-video-mlx
     variant: mlx-bf16
     parameters:
@@ -1775,7 +1793,7 @@ models:
       recommended_vram_gb: 64
       min_ram_gb: 64
       recommended_ram_gb: 96
-      disk_space_gb: 51
+      disk_space_gb: 112
       supported_devices:
       - MPS
       performance_notes: LTX-2.5 video at bf16 — the best this runtime does on a 64 GB+ Mac, with the

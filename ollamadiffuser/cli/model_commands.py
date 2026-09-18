@@ -513,9 +513,9 @@ def _show_model_specific_help(model_name: str):
     # License-specific help
     license_info = model_info.get("license_info", {})
     if license_info.get("requires_agreement", False):
-        rprint(f"   [yellow]🔑 Requires HuggingFace token and license agreement[/yellow]")
-        rprint(f"   [blue]📝 Visit: https://huggingface.co/{model_info['repo_id']}[/blue]")
-        rprint(f"   [cyan]🔧 Set token: export HF_TOKEN=your_token_here[/cyan]")
+        rprint(f"   [yellow]🔑 Gated: needs a login and access granted[/yellow]")
+        rprint(f"   [blue]📝 Request access: https://huggingface.co/{model_info['repo_id']}[/blue]")
+        rprint(f"   [cyan]🔧 Log in: hf auth login[/cyan]  [dim](huggingface-cli was retired)[/dim]")
     else:
         rprint(f"   [green]✅ No HuggingFace token required![/green]")
 

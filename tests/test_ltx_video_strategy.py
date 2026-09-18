@@ -8,6 +8,7 @@ not exist — are the ones a unit test can catch in a millisecond.
 """
 from __future__ import annotations
 
+import fnmatch
 from pathlib import Path
 
 import pytest
@@ -431,3 +432,142 @@ class TestRegistryEntries:
                 continue
             gated = cfg["license_info"]["requires_agreement"]
             assert gated is ("2.5" in name), f"{name}: gated={gated}"
+
+# --------------------------------------------------------------------------
+# What a pack actually contains, and what each mode loads out of it
+# --------------------------------------------------------------------------
+
+# File names and sizes read off the hub on 2026-09-18, in GiB. Kept here
+# because the rules below are about the intersection of an entry's patterns
+# with real filenames: a test that invents file names proves nothing, and
+# these entries were first written from upstream's README, which is how they
+# came to fetch weights their own mode could not use.
+_SHARED_23 = {
+    "connector.safetensors": 5.91, "vae_decoder.safetensors": 0.76,
+    "vae_encoder.safetensors": 0.59, "audio_vae.safetensors": 0.10,
+    "vocoder.safetensors": 0.24, "spatial_upscaler_x1_5_v1_0.safetensors": 1.02,
+    "spatial_upscaler_x2_v1_1.safetensors": 0.93,
+    "temporal_upscaler_x2_v1_0.safetensors": 0.24,
+    "split_model.json": 0.0, "embedded_config.json": 0.0, "LICENSE": 0.0,
+}
+_SHARED_25 = {
+    "connector.safetensors": 3.76, "vae_decoder_av.safetensors": 0.78,
+    "vae_decoder_conv.safetensors": 0.76, "vae_encoder_conv.safetensors": 0.59,
+    "vae_encoder_av.safetensors": 0.59, "audio_vae.safetensors": 0.10,
+    "vocoder.safetensors": 0.24, "spatial_upscaler_x2_v1_0.safetensors": 0.93,
+    "temporal_upscaler_x2_v1_0.safetensors": 0.24,
+    "duration_head.safetensors": 0.01, "text_encoder_config.json": 0.0,
+    "tokenizer.json": 0.03, "split_model.json": 0.0, "LICENSE": 0.0,
+}
+
+def _pack(transformer_gb, *, family, text_encoder_gb=None, lora=None, lora_gb=0.0):
+    files = dict(_SHARED_23 if family == "2.3" else _SHARED_25)
+    if family == "2.3":
+        for stem in ("transformer-dev", "transformer-distilled",
+                     "transformer-distilled-1.1"):
+            files[f"{stem}.safetensors"] = transformer_gb
+    else:
+        for stem in ("transformer-dev", "transformer-distilled"):
+            files[f"{stem}.safetensors"] = transformer_gb
+        files["text_encoder.safetensors"] = text_encoder_gb
+    if lora:
+        for name in lora:
+            files[name] = lora_gb
+    return files
+
+_LORA_23 = ("ltx-2.3-22b-distilled-lora-384.safetensors",
+            "ltx-2.3-22b-distilled-lora-384-1.1.safetensors")
+_LORA_25 = ("ltx-2.5-22b-distilled-lora-450-bf16.safetensors",)
+
+PACKS = {
+    "ltx-2.3-mlx-q4":   _pack(10.54, family="2.3", lora=_LORA_23, lora_gb=7.08),
+    "ltx-2.3-mlx-q8":   _pack(19.18, family="2.3", lora=_LORA_23, lora_gb=7.08),
+    "ltx-2.3-mlx-bf16": _pack(35.38, family="2.3", lora=_LORA_23, lora_gb=7.08),
+    "ltx-2.5-mlx-q4":   _pack(10.54, family="2.5", text_encoder_gb=9.84,
+                              lora=_LORA_25, lora_gb=8.29),
+    "ltx-2.5-mlx-q8":   _pack(19.18, family="2.5", text_encoder_gb=14.91,
+                              lora=_LORA_25, lora_gb=8.29),
+    "ltx-2.5-mlx-bf16": _pack(35.38, family="2.5", text_encoder_gb=24.43,
+                              lora=_LORA_25, lora_gb=8.29),
+}
+
+
+def _fetched(patterns, files):
+    """The files an entry's allow_patterns would pull out of a pack."""
+    return {name: size for name, size in files.items()
+            if any(fnmatch.fnmatch(name, p) for p in patterns)}
+
+
+class TestPatternsMatchTheMode:
+    """An entry must fetch the weights its own mode loads — no more, no less.
+
+    Read out of ltx-2-mlx 0.15.6's pipelines: stage 1 of two-stage takes
+    ``transformer-dev``; stage 2 either streams the pre-fused
+    ``transformer-distilled*`` (under ``--low-ram``) or fuses the distilled
+    LoRA; ``--distilled`` takes the distilled transformer, preferring the
+    versioned file; and a 2.5 pack carries its own ``text_encoder`` plus the
+    ``duration_head`` that predicts a clip's length, where a 2.3 pack has
+    neither and the CLI downloads Gemma instead.
+    """
+
+    def entries(self):
+        reg = ModelRegistry()._registry
+        out = [(n, c) for n, c in reg.items() if c.get("model_type") == "ltx-video-mlx"]
+        assert out, "no LTX entries in the registry"
+        return out
+
+    def test_every_pack_is_covered_by_this_test(self):
+        assert {n for n, _ in self.entries()} == set(PACKS)
+
+    def test_stage_one_weights(self):
+        for name, cfg in self.entries():
+            mode = cfg["parameters"]["mode"]
+            got = _fetched(cfg["allow_patterns"], PACKS[name])
+            if mode == "distilled":
+                assert any(f.startswith("transformer-distilled") for f in got), name
+            else:
+                assert "transformer-dev.safetensors" in got, f"{name} ({mode}) needs the dev transformer"
+
+    def test_stage_two_weights(self):
+        for name, cfg in self.entries():
+            if cfg["parameters"]["mode"] not in ("two-stage", "two-stages-hq"):
+                continue
+            got = _fetched(cfg["allow_patterns"], PACKS[name])
+            assert any(f.startswith("transformer-distilled") for f in got), name
+            assert any("distilled-lora" in f for f in got), \
+                f"{name}: stage 2 fuses the distilled LoRA when --low-ram is off"
+
+    def test_the_2_5_packs_bring_their_own_text_encoder(self):
+        for name, cfg in self.entries():
+            got = _fetched(cfg["allow_patterns"], PACKS[name])
+            if "2.5" in name:
+                assert "text_encoder.safetensors" in got, f"{name} would fall back to Gemma"
+                assert "duration_head.safetensors" in got, f"{name} could not predict a duration"
+            else:
+                assert "text_encoder.safetensors" not in got, \
+                    f"{name}: 2.3 packs have none — the CLI downloads Gemma"
+
+    def test_the_parts_every_pipeline_loads(self):
+        for name, cfg in self.entries():
+            got = _fetched(cfg["allow_patterns"], PACKS[name])
+            assert "connector.safetensors" in got, name
+            assert "vocoder.safetensors" in got, name
+            assert any("vae" in f for f in got), name
+            assert any("upscaler" in f for f in got), name
+
+    def test_disk_space_is_what_the_patterns_would_download(self):
+        """The registry's figure is measured, not quoted from a README."""
+        for name, cfg in self.entries():
+            total = sum(_fetched(cfg["allow_patterns"], PACKS[name]).values())
+            stated = cfg["hardware_requirements"]["disk_space_gb"]
+            assert total <= stated <= total + 1.5, \
+                f"{name}: patterns pull {total:.1f} GB, entry says {stated}"
+
+    def test_nothing_unused_is_fetched(self):
+        """A pack holds three transformers; an entry should not take all of them."""
+        for name, cfg in self.entries():
+            got = _fetched(cfg["allow_patterns"], PACKS[name])
+            transformers = [f for f in got if f.startswith("transformer")]
+            expected = 1 if cfg["parameters"]["mode"] == "distilled" else 2
+            assert len(transformers) == expected, \
+                f"{name}: fetches {sorted(transformers)}"
