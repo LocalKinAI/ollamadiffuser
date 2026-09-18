@@ -25,7 +25,26 @@ message about arguments rather than about video:
 
 `seconds=` now converts at the requested frame rate rather than always 24: four
 seconds at 30 fps is 121 frames, and rounding that against 24 handed back 3.2s
-of video. 191 tests pass, 55 of them on this argv.
+of video.
+
+### Fixed — two found by the first real generation
+
+Verified end to end on a 96 GB Mac Studio: **4 seconds of 704×448 in 83
+seconds**, H.264 with a 48 kHz stereo AAC track, from an LTX-2.3 int4 pack.
+Getting there cost two bugs no unit test had reason to catch:
+
+- **Every text-to-video request was a 500.** `POST /api/generate/video` read
+  `upload.filename` at the call site to work out a temp-file suffix — before
+  the helper it passed it to checked the upload for None. So the ordinary
+  call, a prompt and no files, died with an `AttributeError` and came back
+  with `{"detail": "Video generation failed"}` and nothing else.
+- **`seconds=` was ignored whenever the registry entry set `frames`.** A
+  default and a caller's request landed in the same dict, and the q4 entry
+  defaults to 97 — so a two-second ask spent twice as long making four
+  seconds. Precedence is now: the caller's frames, then the caller's seconds,
+  then the entry's default.
+
+194 tests pass, 56 of them on the argv.
 
 ## [2.0.22] - 2026-09-18
 

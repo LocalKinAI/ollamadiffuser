@@ -362,9 +362,14 @@ class LTXVideoMLXStrategy(InferenceStrategy):
         target.parent.mkdir(parents=True, exist_ok=True)
 
         options = argv_options(self.defaults)
-        options.update(argv_options(kwargs))
+        asked = argv_options(kwargs)
+        options.update(asked)
         options.pop("pack", None)          # the pack is the loaded model's
-        if "frames" not in options and seconds:
+        # Precedence: a frame count the caller gave, then their seconds, then
+        # whatever the registry entry defaults to. Without the middle one a
+        # registry that sets `frames` silently ignores every `seconds=` — which
+        # is exactly what the q4 entry's `frames: 97` did to a two-second ask.
+        if "frames" not in asked and seconds:
             # At the requested rate, not always 24: four seconds at 30 fps is
             # 121 frames, and rounding it against 24 would hand back 3.2s.
             options["frames"] = frames_for_seconds(

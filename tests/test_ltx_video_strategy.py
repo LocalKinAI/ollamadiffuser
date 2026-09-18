@@ -348,6 +348,43 @@ class TestStrategy:
         assert argv[argv.index("--frames") + 1] == "97"
         assert argv[argv.index("--model") + 1] == "dgrauet/ltx-2.3-mlx-q8"
 
+    def test_seconds_beats_the_registrys_frame_count(self, monkeypatch, tmp_path):
+        """A caller who asks for two seconds gets two seconds.
+
+        The q4 entry defaults to `frames: 97`, and a registry default used to
+        land in the same dict the caller's options did — so `seconds=2` was
+        dropped and the box spent twice as long making four seconds of video.
+        An explicit `frames=` still wins, as it does in the CLI.
+        """
+        binary = tmp_path / "ltx-2-mlx"
+        binary.write_text("#!/bin/sh\n")
+        binary.chmod(0o755)
+        monkeypatch.setattr(ltx, "is_apple_silicon", lambda: True)
+        monkeypatch.setattr(ltx, "find_ltx_binary", lambda explicit=None: str(binary))
+        monkeypatch.setattr(ltx.shutil, "which", lambda name: "/usr/bin/ffmpeg")
+        s = LTXVideoMLXStrategy()
+        s.load(self._config(mode="distilled", frames=97), "mps")
+
+        seen = {}
+        out = tmp_path / "clip.mp4"
+
+        class _Result:
+            returncode = 0
+            stdout = "done"
+
+        def _fake_run(argv, timeout=None):
+            seen["argv"] = list(argv)
+            out.write_bytes(b"mp4")
+            return _Result()
+
+        monkeypatch.setattr(LTXVideoMLXStrategy, "_run", staticmethod(_fake_run))
+
+        s.generate_video("a cat", output=str(out), seconds=2)
+        assert seen["argv"][seen["argv"].index("--frames") + 1] == "49"
+
+        s.generate_video("a cat", output=str(out), seconds=2, frames=97)
+        assert seen["argv"][seen["argv"].index("--frames") + 1] == "97"
+
     def test_failure_carries_the_cli_output(self, monkeypatch, tmp_path):
         binary = tmp_path / "ltx-2-mlx"
         binary.write_text("#!/bin/sh\n")

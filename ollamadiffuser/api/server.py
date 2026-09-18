@@ -297,9 +297,13 @@ def create_app() -> FastAPI:
         # The uploads have to exist as files: the CLI takes paths.
         temp_paths: list[Path] = []
 
-        async def _spill(upload: Optional[UploadFile], suffix: str) -> Optional[str]:
+        async def _spill(upload: Optional[UploadFile], fallback: str) -> Optional[str]:
+            # The suffix is worked out in here, not at the call site: an
+            # omitted file is None, and `upload.filename` at the call site is
+            # read before this function gets to check that.
             if upload is None:
                 return None
+            suffix = Path(upload.filename or "").suffix or fallback
             data = await upload.read()
             if not data:
                 return None
@@ -310,8 +314,8 @@ def create_app() -> FastAPI:
             return handle.name
 
         try:
-            image_path = await _spill(image, Path(image.filename or "ref.png").suffix or ".png")
-            audio_path = await _spill(audio, Path(audio.filename or "ref.wav").suffix or ".wav")
+            image_path = await _spill(image, ".png")
+            audio_path = await _spill(audio, ".wav")
 
             options = {
                 "frames": frames, "width": width, "height": height, "seed": seed,
