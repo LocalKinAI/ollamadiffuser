@@ -254,6 +254,34 @@ class TestStrategy:
         s.unload()
         assert s.is_loaded is False
 
+    def test_a_pulled_pack_is_used_from_disk(self, monkeypatch, tmp_path):
+        """No second copy: ollamadiffuser pull already has the 21 GB."""
+        from types import SimpleNamespace
+        pack = tmp_path / "pack"
+        pack.mkdir()
+        (pack / "config.json").write_text("{}")
+        (pack / "transformer-distilled.safetensors").write_bytes(b"\x00")
+        binary = tmp_path / "ltx-2-mlx"
+        binary.write_text("#!/bin/sh\n")
+        binary.chmod(0o755)
+        monkeypatch.setattr(ltx, "is_apple_silicon", lambda: True)
+        monkeypatch.setattr(ltx, "find_ltx_binary", lambda explicit=None: str(binary))
+        monkeypatch.setattr(ltx.shutil, "which", lambda name: "/usr/bin/ffmpeg")
+        config = SimpleNamespace(
+            name="ltx-2.3-mlx-q8", path=str(pack), model_type="ltx-video-mlx",
+            variant="mlx-int8", repo_id="dgrauet/ltx-2.3-mlx-q8",
+            parameters={"ltx_pack": "dgrauet/ltx-2.3-mlx-q8"},
+        )
+        s = LTXVideoMLXStrategy()
+        assert s.load(config, "mps") is True
+        assert s.pack == str(pack)
+
+    def test_an_empty_folder_is_not_a_pack(self, tmp_path):
+        assert ltx.looks_like_pack(str(tmp_path)) is False
+        assert ltx.looks_like_pack(None) is False
+        (tmp_path / "config.json").write_text("{}")
+        assert ltx.looks_like_pack(str(tmp_path)) is False   # no weights yet
+
     def test_generate_image_says_it_is_a_video_model(self):
         with pytest.raises(RuntimeError, match="video model"):
             LTXVideoMLXStrategy().generate("a cat")

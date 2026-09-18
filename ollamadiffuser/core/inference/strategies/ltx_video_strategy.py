@@ -115,6 +115,23 @@ def find_ltx_binary(explicit: Optional[str] = None) -> Optional[str]:
     return None
 
 
+# What a downloaded pack looks like on disk: its own config plus the
+# transformer weights. Checked because `ollamadiffuser pull` and ltx-2-mlx
+# would otherwise each keep their own 21 GB copy of the same pack.
+PACK_MARKERS = ("config.json", "split_model.json")
+
+
+def looks_like_pack(path: Optional[str]) -> bool:
+    """True when ``path`` is a directory holding an LTX-2 MLX pack."""
+    if not path:
+        return False
+    folder = Path(path)
+    if not folder.is_dir():
+        return False
+    has_marker = any((folder / name).is_file() for name in PACK_MARKERS)
+    return has_marker and any(folder.glob("transformer*.safetensors"))
+
+
 def valid_frame_count(frames: int) -> bool:
     """Frames must be ``8k + 1``: the VAE compresses time 8×."""
     return frames >= 9 and (frames - 1) % 8 == 0
@@ -274,7 +291,17 @@ class LTXVideoMLXStrategy(InferenceStrategy):
             return False
 
         self.binary = binary
-        self.pack = params.get("ltx_pack") or getattr(model_config, "repo_id", None) or DEFAULT_PACK
+        # A pack `pull` already downloaded is the one to use: the CLI takes a
+        # local path as happily as a hub id, and pointing it at the hub instead
+        # would download the same 21 GB a second time into its own cache.
+        local = getattr(model_config, "path", None)
+        if looks_like_pack(local):
+            self.pack = str(local)
+            logger.info(f"LTX-2: using the pack at {local}")
+        else:
+            self.pack = (params.get("ltx_pack")
+                         or getattr(model_config, "repo_id", None)
+                         or DEFAULT_PACK)
         self.defaults = params
         self.model_config = model_config
         self.device = device
