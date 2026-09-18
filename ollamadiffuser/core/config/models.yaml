@@ -1397,7 +1397,7 @@ models:
       recommended_vram_gb: 20
       min_ram_gb: 24
       recommended_ram_gb: 32
-      disk_space_gb: 14
+      disk_space_gb: 62
       supported_devices:
       - MPS
       performance_notes: Apple Silicon native Krea 2 Turbo (12B) at 8-bit MLX, 8 steps. Wide stylistic
@@ -1420,7 +1420,7 @@ models:
       recommended_vram_gb: 16
       min_ram_gb: 24
       recommended_ram_gb: 32
-      disk_space_gb: 12
+      disk_space_gb: 39
       supported_devices:
       - MPS
       performance_notes: Apple Silicon native Boogu Image Turbo (10B) at 8-bit MLX. DMD-distilled — 4
@@ -1444,7 +1444,7 @@ models:
       recommended_vram_gb: 14
       min_ram_gb: 16
       recommended_ram_gb: 24
-      disk_space_gb: 10
+      disk_space_gb: 32
       supported_devices:
       - MPS
       performance_notes: Apple Silicon native ERNIE-Image-Turbo (8B) at 8-bit MLX, 8 steps. Single-stream
@@ -1468,7 +1468,7 @@ models:
       recommended_vram_gb: 20
       min_ram_gb: 24
       recommended_ram_gb: 32
-      disk_space_gb: 16
+      disk_space_gb: 28
       supported_devices:
       - MPS
       performance_notes: Apple Silicon native Lens Turbo via mflux. 3.8B dual-stream MMDiT from Microsoft
@@ -1491,7 +1491,7 @@ models:
       recommended_vram_gb: 18
       min_ram_gb: 24
       recommended_ram_gb: 32
-      disk_space_gb: 12
+      disk_space_gb: 28
       supported_devices:
       - MPS
       performance_notes: Apple Silicon native Ideogram 4 (9B) at 8-bit MLX. JSON-caption-native and
@@ -1516,7 +1516,7 @@ models:
       recommended_vram_gb: 16
       min_ram_gb: 24
       recommended_ram_gb: 32
-      disk_space_gb: 11
+      disk_space_gb: 26
       supported_devices:
       - MPS
       performance_notes: Apple Silicon native FIBO (8B) at 8-bit MLX. Takes JSON prompts describing a
@@ -1540,7 +1540,7 @@ models:
       recommended_vram_gb: 16
       min_ram_gb: 24
       recommended_ram_gb: 32
-      disk_space_gb: 11
+      disk_space_gb: 41
       supported_devices:
       - MPS
       performance_notes: Apple Silicon native FIBO-Edit (8B) at 8-bit MLX — instruction-based editing,
@@ -1552,6 +1552,11 @@ models:
       commercial_use: false
   seedvr2-3b-mlx:
     repo_id: numz/SeedVR2_comfyUI
+    # The repo carries every SeedVR2 variant — 7B included, at 16 GB each.
+    allow_patterns:
+    - "*3b*"
+    - "*vae*"
+    - "*.json"
     model_type: mlx
     variant: mlx-q8
     parameters:
@@ -1563,7 +1568,7 @@ models:
       recommended_vram_gb: 16
       min_ram_gb: 16
       recommended_ram_gb: 32
-      disk_space_gb: 8
+      disk_space_gb: 12
       supported_devices:
       - MPS
       performance_notes: Apple Silicon native SeedVR2 3B at 8-bit MLX — an upscaler, not a generator.
@@ -1575,6 +1580,15 @@ models:
       commercial_use: true
   ltx-2.3-mlx-q8:
     repo_id: dgrauet/ltx-2.3-mlx-q8
+    # Only this entry's own transformer: the pack ships three, one per mode.
+    allow_patterns:
+    - "transformer-dev.safetensors"
+    - "connector.safetensors"
+    - "*vae*.safetensors"
+    - "vocoder.safetensors"
+    - "*upscaler*"
+    - "*.json"
+    - "LICENSE"
     model_type: ltx-video-mlx
     variant: mlx-int8
     parameters:
@@ -1589,7 +1603,7 @@ models:
       recommended_vram_gb: 32
       min_ram_gb: 32
       recommended_ram_gb: 64
-      disk_space_gb: 21
+      disk_space_gb: 34
       supported_devices:
       - MPS
       performance_notes: LTX-2.3 video on Apple Silicon at int8, through the ltx-2-mlx CLI. Text-to-video
@@ -1601,6 +1615,15 @@ models:
       commercial_use: false
   ltx-2.3-mlx-q4:
     repo_id: dgrauet/ltx-2.3-mlx-q4
+    # Distilled mode only, which is what a 16 GB Mac runs.
+    allow_patterns:
+    - "transformer-distilled*.safetensors"
+    - "connector.safetensors"
+    - "*vae*.safetensors"
+    - "vocoder.safetensors"
+    - "*upscaler*"
+    - "*.json"
+    - "LICENSE"
     model_type: ltx-video-mlx
     variant: mlx-int4
     parameters:
@@ -1615,7 +1638,7 @@ models:
       recommended_vram_gb: 16
       min_ram_gb: 16
       recommended_ram_gb: 32
-      disk_space_gb: 12
+      disk_space_gb: 36
       supported_devices:
       - MPS
       performance_notes: LTX-2.3 video at int4 — the pack that fits a 16 GB Mac, with block streaming
@@ -1626,6 +1649,15 @@ models:
       commercial_use: false
   ltx-2.3-mlx-bf16:
     repo_id: dgrauet/ltx-2.3-mlx
+    # Only this entry's own transformer: the pack ships three, one per mode.
+    allow_patterns:
+    - "transformer-dev.safetensors"
+    - "connector.safetensors"
+    - "*vae*.safetensors"
+    - "vocoder.safetensors"
+    - "*upscaler*"
+    - "*.json"
+    - "LICENSE"
     model_type: ltx-video-mlx
     variant: mlx-bf16
     parameters:
@@ -1640,7 +1672,7 @@ models:
       recommended_vram_gb: 64
       min_ram_gb: 64
       recommended_ram_gb: 96
-      disk_space_gb: 42
+      disk_space_gb: 53
       supported_devices:
       - MPS
       performance_notes: LTX-2.3 video at bf16, the full-quality pack — 64 GB+ Macs. HQ mode uses the
@@ -1652,6 +1684,15 @@ models:
       commercial_use: false
   ltx-2.5-mlx-q8:
     repo_id: dgrauet/ltx-2.5-mlx-q8
+    # Only this entry's own transformer: the pack ships three, one per mode.
+    allow_patterns:
+    - "transformer-distilled*"
+    - "connector.safetensors"
+    - "*vae*.safetensors"
+    - "vocoder.safetensors"
+    - "*upscaler*"
+    - "*.json"
+    - "LICENSE"
     model_type: ltx-video-mlx
     variant: mlx-int8
     parameters:
@@ -1665,7 +1706,7 @@ models:
       recommended_vram_gb: 32
       min_ram_gb: 32
       recommended_ram_gb: 64
-      disk_space_gb: 22
+      disk_space_gb: 32
       supported_devices:
       - MPS
       performance_notes: LTX-2.5 video at int8. The 2.5 packs predict their own duration, so frames is
@@ -1677,6 +1718,15 @@ models:
       commercial_use: false
   ltx-2.5-mlx-q4:
     repo_id: dgrauet/ltx-2.5-mlx-q4
+    # Distilled mode only, which is what a 16 GB Mac runs.
+    allow_patterns:
+    - "transformer-distilled*.safetensors"
+    - "connector.safetensors"
+    - "*vae*.safetensors"
+    - "vocoder.safetensors"
+    - "*upscaler*"
+    - "*.json"
+    - "LICENSE"
     model_type: ltx-video-mlx
     variant: mlx-int4
     parameters:
@@ -1691,7 +1741,7 @@ models:
       recommended_vram_gb: 16
       min_ram_gb: 16
       recommended_ram_gb: 32
-      disk_space_gb: 13
+      disk_space_gb: 22
       supported_devices:
       - MPS
       performance_notes: LTX-2.5 video at int4, for 16 GB Macs, with block streaming on. Duration is
@@ -1702,6 +1752,15 @@ models:
       commercial_use: false
   ltx-2.5-mlx-bf16:
     repo_id: dgrauet/ltx-2.5-mlx
+    # Only this entry's own transformer: the pack ships three, one per mode.
+    allow_patterns:
+    - "transformer-dev.safetensors"
+    - "connector.safetensors"
+    - "*vae*.safetensors"
+    - "vocoder.safetensors"
+    - "*upscaler*"
+    - "*.json"
+    - "LICENSE"
     model_type: ltx-video-mlx
     variant: mlx-bf16
     parameters:
@@ -1716,7 +1775,7 @@ models:
       recommended_vram_gb: 64
       min_ram_gb: 64
       recommended_ram_gb: 96
-      disk_space_gb: 44
+      disk_space_gb: 51
       supported_devices:
       - MPS
       performance_notes: LTX-2.5 video at bf16 — the best this runtime does on a 64 GB+ Mac, with the
