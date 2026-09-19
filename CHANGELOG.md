@@ -5,6 +5,81 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.25] - 2026-09-18
+
+### 🎭 One model that changes a picture without changing who is in it
+
+Building a companion who stays the same person across scenes needed an
+editor, not a better prompt. This adds **FLUX.2 klein 4B through mflux's edit
+variant** (`flux2-edit` → `Flux2KleinEdit`), which takes reference images and
+keeps the face:
+
+| | FLUX.1-Kontext | **klein-4B-edit** |
+|---|---|---|
+| one 768–1024px edit | 181s | **10–22s** |
+| download | 31.4 GB | **15 GB** |
+| parameters | 12B | 4B |
+| gated | login required | **no** |
+| references | one | several |
+
+Both measured on a 96 GB Mac Studio, same input picture and instruction.
+
+The entry is editing-only despite the signature taking `image_paths=None`:
+with no reference, mflux 0.19.2 raises a concatenate error out of mlx. So
+drawing a character still wants a text-to-image model (Boogu Image Turbo,
+14s) and this one changes her.
+
+### 🛑 Two defaults that quietly ruined every edit
+
+A four-step distilled model plus a strength of 0.75 is **one** denoising
+step, and one step returns confetti. Two layers had that default:
+
+- `POST /api/generate/img2img` defaulted `strength` to 0.75 and always sent
+  it. It is now `None` unless a caller says otherwise.
+- `Engine.generate_image` had the same default *and re-inserted it* whenever
+  an image was present — so removing it from the endpoint changed nothing.
+  Also `None` now, and forwarded only when set.
+
+Registry entries for the klein packs said 28 steps at guidance 3.5 — FLUX.1's
+numbers, copied. mflux's own defaults for a distilled model are **4 steps at
+guidance 1.0**, and that is what they say now.
+
+### 🔍 A picture that is not a picture is refused
+
+A model can return latents it never denoised: a valid, full-size PNG of
+confetti that passes every cheap check. Two of them reached a user as art
+during this work, so `looks_like_noise` now stands between.
+
+One metric was not enough. Adjacent-pixel difference reads 36 for static and
+4 for a portrait, but a photograph of a dog in grass reads 14.4 and a failed
+generation reads 14.7 — they overlap. What separates them is what survives
+being shrunk to 16×16: a photograph still has a composition, garbage turns to
+mush. The ratio of the two, over 45 real photographs and two failures:
+
+    45 photographs (busiest: a shiba in grass)   0.06 – 0.38
+    FLUX.2 klein at the wrong step count         2.86
+    FLUX.1-Kontext on a seed that breaks it      6.60
+
+The threshold is 1.0. On a hit, a generation the caller did not seed is
+retried once with a different one; a second failure raises with the model's
+own sentence rather than returning the picture. **Seeds matter more than they
+should**: FLUX.1-Kontext int8 draws the portrait at seed 1234 and static at
+seed 473366517, same weights, same prompt, same input image.
+
+### 📦 The FLUX repos, sized
+
+Every `flux1`/`flux2` MLX entry had no `allow_patterns`, so each pulled the
+diffusers layout **and** the single-file ComfyUI checkpoint of the same
+weights. mflux reads only the former (its own file list says so), and the
+entries now match it — Kontext drops from 53.9 GB to 31.4, klein-4B from 22.1
+to 15. Every `disk_space_gb` is the measured sum of what its patterns fetch:
+they all said 14, and the truth ranges from 1 (Redux, which is an adapter
+onto FLUX.1-dev) to 41 (Depth). The two ControlNet entries keep no patterns,
+because their repos are flat and a diffusers-layout filter matches nothing at
+all — found by measuring, after adding it broke them.
+
+214 tests pass.
+
 ## [2.0.24] - 2026-09-18
 
 ### 🔒 A refused download looked like a finished one

@@ -135,14 +135,26 @@ class TestDispatch:
 
     def test_supported_variants_constant(self):
         # Phase 1 + 2 + 2.5 (the FLUX/Z-Image/Qwen families), plus the eight
-        # families mflux added after them — seventeen in all.
+        # families mflux added after them, plus FLUX.2's editor — eighteen.
         assert SUPPORTED_MLX_VARIANTS == frozenset({
             "flux1", "flux1-kontext",
             "flux1-fill", "flux1-redux", "flux1-depth", "flux1-controlnet",
-            "flux2", "z_image", "qwen-image",
+            "flux2", "flux2-edit", "z_image", "qwen-image",
             "krea2", "boogu", "ernie-image", "lens", "ideogram4",
             "fibo", "fibo-edit", "seedvr2",
         })
+
+    def test_flux2_edit_does_not_demand_an_image_here(self):
+        """Not listed as image-required, even though it is an editor.
+
+        Its signature takes `image_paths | None`, which reads like one model
+        for both jobs. It is not: called with no reference, mflux 0.19.2
+        raises a concatenate type error out of mlx. The check stays out of
+        _VARIANT_REQUIRED_INPUTS anyway, because the sentence it would print
+        ("pass image=") is about our kwarg names rather than about what
+        happened, and a future mflux may well support it.
+        """
+        assert "flux2-edit" not in mlx_strategy._VARIANT_REQUIRED_INPUTS
 
     def test_alias_routed_families_are_supported(self):
         # Every alias-routed family must also be in the supported set, or

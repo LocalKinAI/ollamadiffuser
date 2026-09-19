@@ -224,6 +224,11 @@ def create_app() -> FastAPI:
             if request.response_format == "b64_json":
                 return _image_to_json_response(image)
             return _image_to_response(image)
+        except RuntimeError as e:
+            # The model refused or returned something that is not a picture;
+            # its own sentence is the useful one.
+            logger.error(f"Generation failed: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
         except Exception as e:
             logger.error(f"Generation failed: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Image generation failed")
@@ -235,10 +240,18 @@ def create_app() -> FastAPI:
         num_inference_steps: Optional[int] = Form(None),
         guidance_scale: Optional[float] = Form(None),
         seed: Optional[int] = Form(None),
-        strength: float = Form(0.75),
+        strength: Optional[float] = Form(None),
         image: UploadFile = File(...),
     ):
-        """Image-to-image generation"""
+        """Image-to-image generation.
+
+        ``strength`` defaults to nothing rather than to 0.75. A default here
+        is not neutral: it is a fraction of the step count, and on a
+        four-step distilled model 0.75 leaves **one** denoising step, which
+        returns confetti. Measured on FLUX.2 klein 4B — 4 steps with no
+        strength draws the picture, the same call at 0.75 does not. Models
+        that want a default have their own.
+        """
         engine = _get_engine()
 
         image_data = await image.read()
@@ -255,9 +268,14 @@ def create_app() -> FastAPI:
                 height=input_image.height,
                 seed=seed,
                 image=input_image,
-                strength=strength,
+                **({"strength": strength} if strength is not None else {}),
             )
             return _image_to_response(result)
+        except RuntimeError as e:
+            # The model refused or returned something that is not a picture;
+            # its own sentence is the useful one.
+            logger.error(f"img2img failed: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
         except Exception as e:
             logger.error(f"img2img failed: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Image-to-image generation failed")

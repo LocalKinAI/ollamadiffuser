@@ -83,7 +83,7 @@ uv pip install --python "$VENV_PY" --upgrade ollamadiffuser
 # --- 5. Apple Silicon: native MLX backend (also compile-free) ------------
 if [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ]; then
     step "🍎 Apple Silicon — enabling MLX backend (typically 2-3× faster)..."
-    uv pip install --python "$VENV_PY" "mflux>=0.17.0" \
+    uv pip install --python "$VENV_PY" "mflux>=0.19.0" \
         || warn "MLX install skipped; run 'ollamadiffuser enable mlx' later."
 fi
 

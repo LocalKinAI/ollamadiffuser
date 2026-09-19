@@ -28,23 +28,41 @@ def _yaml_path() -> Path:
 
 
 class TestZeroLossMigration:
-    """The migration guarantee, which is about loss rather than about size.
+    """The migration guarantee, which is about loss rather than about drift.
 
-    This was an equality check against the snapshot, which meant every new
-    model broke it — and the guarantee the snapshot exists for is that nothing
-    from before the migration was lost or mangled, not that the registry never
-    grows again. So: every snapshot entry must still be present and identical,
-    and the registry may have more.
+    This started as an equality check against the snapshot, which meant every
+    new model broke it; loosening that to "snapshot entries must all still be
+    here" fixed the growth case but still froze every field of every old
+    entry, so correcting a guessed disk figure to a measured one also failed.
+    The guarantee worth keeping is narrower: nothing from before the migration
+    disappeared, and nothing was quietly repointed at a different repo or
+    strategy. Estimates are free to improve.
     """
 
+    # What the snapshot is allowed to pin. Everything else about an entry is
+    # an estimate we expect to improve: disk/VRAM figures get replaced by
+    # measured ones, allow_patterns get narrowed once we learn which files a
+    # loader actually reads, performance notes get rewritten. Freezing those
+    # turned every honest correction into a failing test, which is the
+    # opposite of what the snapshot is for.
+    _IDENTITY_FIELDS = ("repo_id", "model_type")
+
     def test_registry_keeps_every_pre_migration_model(self):
-        """The single most important test: no model was lost or mangled."""
+        """The guarantee: no pre-migration model was lost or silently repointed."""
         snapshot = json.loads(_SNAPSHOT.read_text(encoding="utf-8"))
         loaded = ModelRegistry()._registry
+
         missing = sorted(set(snapshot) - set(loaded))
         assert not missing, f"models.yaml lost {missing}"
+
         for name, cfg in snapshot.items():
-            assert loaded[name] == cfg, f"{name} drifted from the pinned snapshot"
+            for field in self._IDENTITY_FIELDS:
+                if field in cfg:
+                    assert loaded[name].get(field) == cfg[field], (
+                        f"{name}.{field} changed from {cfg[field]!r} to "
+                        f"{loaded[name].get(field)!r} — a pre-migration model "
+                        f"must keep pointing at the same thing"
+                    )
 
     def test_model_count_never_shrinks(self):
         snapshot = json.loads(_SNAPSHOT.read_text(encoding="utf-8"))

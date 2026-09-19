@@ -80,6 +80,20 @@ models:
       commercial_use: false
   flux.1-schnell-mlx:
     repo_id: black-forest-labs/FLUX.1-schnell
+    # mflux reads the diffusers layout; the root single-file
+    # checkpoint is the same weights again, for ComfyUI.
+    allow_patterns:
+    - "transformer/*.json"
+    - "transformer/*.safetensors"
+    - "text_encoder/*.json"
+    - "text_encoder/*.safetensors"
+    - "text_encoder_2/*.json"
+    - "text_encoder_2/*.safetensors"
+    - "tokenizer/**"
+    - "tokenizer_2/**"
+    - "vae/*.json"
+    - "vae/*.safetensors"
+    - "*.json"
     model_type: mlx
     variant: mlx-q8
     parameters:
@@ -94,7 +108,7 @@ models:
       recommended_vram_gb: 16
       min_ram_gb: 16
       recommended_ram_gb: 32
-      disk_space_gb: 14
+      disk_space_gb: 32
       supported_devices:
       - MPS
       performance_notes: 'Apple Silicon native via mflux. Typically 2-3x faster than the PyTorch+MPS path.
@@ -105,6 +119,20 @@ models:
       commercial_use: true
   flux.1-dev-mlx:
     repo_id: black-forest-labs/FLUX.1-dev
+    # mflux reads the diffusers layout; the root single-file
+    # checkpoint is the same weights again, for ComfyUI.
+    allow_patterns:
+    - "transformer/*.json"
+    - "transformer/*.safetensors"
+    - "text_encoder/*.json"
+    - "text_encoder/*.safetensors"
+    - "text_encoder_2/*.json"
+    - "text_encoder_2/*.safetensors"
+    - "tokenizer/**"
+    - "tokenizer_2/**"
+    - "vae/*.json"
+    - "vae/*.safetensors"
+    - "*.json"
     model_type: mlx
     variant: mlx-q8
     parameters:
@@ -119,7 +147,7 @@ models:
       recommended_vram_gb: 16
       min_ram_gb: 16
       recommended_ram_gb: 32
-      disk_space_gb: 14
+      disk_space_gb: 32
       supported_devices:
       - MPS
       performance_notes: Apple Silicon native via mflux at 8-bit quant. Typically 2-3x faster than PyTorch+MPS.
@@ -130,6 +158,20 @@ models:
       commercial_use: false
   flux.1-schnell-mlx-q4:
     repo_id: black-forest-labs/FLUX.1-schnell
+    # mflux reads the diffusers layout; the root single-file
+    # checkpoint is the same weights again, for ComfyUI.
+    allow_patterns:
+    - "transformer/*.json"
+    - "transformer/*.safetensors"
+    - "text_encoder/*.json"
+    - "text_encoder/*.safetensors"
+    - "text_encoder_2/*.json"
+    - "text_encoder_2/*.safetensors"
+    - "tokenizer/**"
+    - "tokenizer_2/**"
+    - "vae/*.json"
+    - "vae/*.safetensors"
+    - "*.json"
     model_type: mlx
     variant: mlx-q4
     parameters:
@@ -144,7 +186,7 @@ models:
       recommended_vram_gb: 12
       min_ram_gb: 16
       recommended_ram_gb: 24
-      disk_space_gb: 8
+      disk_space_gb: 32
       supported_devices:
       - MPS
       performance_notes: Mac Mini M4 16GB friendly. 4-bit MLX quant of FLUX.1-schnell — small quality
@@ -155,6 +197,20 @@ models:
       commercial_use: true
   flux.1-kontext-dev-mlx:
     repo_id: black-forest-labs/FLUX.1-Kontext-dev
+    # mflux reads the diffusers layout; the root single-file
+    # checkpoint is the same weights again, for ComfyUI.
+    allow_patterns:
+    - "transformer/*.json"
+    - "transformer/*.safetensors"
+    - "text_encoder/*.json"
+    - "text_encoder/*.safetensors"
+    - "text_encoder_2/*.json"
+    - "text_encoder_2/*.safetensors"
+    - "tokenizer/**"
+    - "tokenizer_2/**"
+    - "vae/*.json"
+    - "vae/*.safetensors"
+    - "*.json"
     model_type: mlx
     variant: mlx-q8
     parameters:
@@ -168,7 +224,7 @@ models:
       recommended_vram_gb: 20
       min_ram_gb: 24
       recommended_ram_gb: 32
-      disk_space_gb: 14
+      disk_space_gb: 32
       supported_devices:
       - MPS
       performance_notes: Apple Silicon native image editing via mflux. 12B Kontext model at 8-bit MLX
@@ -177,22 +233,77 @@ models:
       type: FLUX.1 Non-Commercial License
       requires_agreement: true
       commercial_use: false
+  flux.2-klein-4b-edit-mlx:
+    repo_id: black-forest-labs/FLUX.2-klein-4B
+    # Same layout as the txt2img entry — the weights are the same file set;
+    # only the class mflux builds around them differs.
+    allow_patterns:
+    - "transformer/*.json"
+    - "transformer/*.safetensors"
+    - "text_encoder/*.json"
+    - "text_encoder/*.safetensors"
+    - "tokenizer/**"
+    - "vae/*.json"
+    - "vae/*.safetensors"
+    - "*.json"
+    # mlx, not flux: the engine dispatches on model_type, and `flux` sends it
+    # to the diffusers FluxPipeline, which refuses a repo with no safety
+    # checker and never reaches mflux at all.
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: flux2-edit
+      mlx_model_name: klein-4b
+      quantize: 8
+      # Distilled: mflux's own defaults, and what the model was trained for.
+      # At 28 steps and guidance 3.5 — FLUX.1's numbers — it returns confetti.
+      num_inference_steps: 4
+      guidance_scale: 1.0
+    license_info:
+      type: FLUX.2 klein — Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+    hardware_requirements:
+      min_vram_gb: 12
+      recommended_vram_gb: 16
+      min_ram_gb: 16
+      recommended_ram_gb: 32
+      disk_space_gb: 15
+      supported_devices:
+      - MPS
+      performance_notes: FLUX.2 klein 4B through mflux's edit variant — multi-reference image
+        editing, measured at 10–22s for a 768–1024px edit against 181s for FLUX.1-Kontext, from
+        half the download and a third of the parameters. Editing only, despite the signature
+        taking image_paths=None — mflux 0.19.2 raises a concatenate type error with no reference,
+        so drawing a character still needs a txt2img model and this one changes her.
   flux.2-klein-4b-mlx:
     repo_id: black-forest-labs/FLUX.2-klein-4B
+    # mflux reads the diffusers layout; flux-2-klein-4b.safetensors
+    # at the root is the same 7.2 GB again, for ComfyUI.
+    allow_patterns:
+    - "transformer/*.json"
+    - "transformer/*.safetensors"
+    - "text_encoder/*.json"
+    - "text_encoder/*.safetensors"
+    - "tokenizer/**"
+    - "vae/*.json"
+    - "vae/*.safetensors"
+    - "*.json"
     model_type: mlx
     variant: mlx-q8
     parameters:
       mlx_variant: flux2
       mlx_model_name: klein-4b
       quantize: 8
-      num_inference_steps: 28
-      guidance_scale: 3.5
+      # Distilled — 4 steps at guidance 1.0, as mflux defaults them.
+      num_inference_steps: 4
+      guidance_scale: 1.0
     hardware_requirements:
       min_vram_gb: 6
       recommended_vram_gb: 12
       min_ram_gb: 16
       recommended_ram_gb: 32
-      disk_space_gb: 7
+      disk_space_gb: 15
       supported_devices:
       - MPS
       performance_notes: Apple Silicon native FLUX.2 4B at 8-bit MLX. Fits Mac Mini M4 16GB UMA. Apache
@@ -209,8 +320,9 @@ models:
       mlx_variant: flux2
       mlx_model_name: klein-9b
       quantize: 8
-      num_inference_steps: 28
-      guidance_scale: 3.5
+      # Distilled, like the 4B — 4 steps at guidance 1.0.
+      num_inference_steps: 4
+      guidance_scale: 1.0
     hardware_requirements:
       min_vram_gb: 12
       recommended_vram_gb: 20
@@ -299,6 +411,20 @@ models:
       commercial_use: true
   flux.1-fill-dev-mlx:
     repo_id: black-forest-labs/FLUX.1-Fill-dev
+    # mflux reads the diffusers layout; the root single-file
+    # checkpoint is the same weights again, for ComfyUI.
+    allow_patterns:
+    - "transformer/*.json"
+    - "transformer/*.safetensors"
+    - "text_encoder/*.json"
+    - "text_encoder/*.safetensors"
+    - "text_encoder_2/*.json"
+    - "text_encoder_2/*.safetensors"
+    - "tokenizer/**"
+    - "tokenizer_2/**"
+    - "vae/*.json"
+    - "vae/*.safetensors"
+    - "*.json"
     model_type: mlx
     variant: mlx-q8
     parameters:
@@ -312,7 +438,7 @@ models:
       recommended_vram_gb: 20
       min_ram_gb: 24
       recommended_ram_gb: 32
-      disk_space_gb: 14
+      disk_space_gb: 32
       supported_devices:
       - MPS
       performance_notes: Apple Silicon native FLUX.1 Fill (inpaint/outpaint) at 8-bit MLX. Requires image=
@@ -323,6 +449,24 @@ models:
       commercial_use: false
   flux.1-redux-dev-mlx:
     repo_id: black-forest-labs/FLUX.1-Redux-dev
+    # mflux reads the diffusers layout; the root single-file
+    # checkpoint is the same weights again, for ComfyUI.
+    allow_patterns:
+    - "transformer/*.json"
+    - "transformer/*.safetensors"
+    - "text_encoder/*.json"
+    - "text_encoder/*.safetensors"
+    - "text_encoder_2/*.json"
+    - "text_encoder_2/*.safetensors"
+    - "tokenizer/**"
+    - "tokenizer_2/**"
+    - "vae/*.json"
+    - "vae/*.safetensors"
+    - "*.json"
+    - "image_embedder/*.json"
+    - "image_embedder/*.safetensors"
+    - "image_encoder/*.json"
+    - "image_encoder/*.safetensors"
     model_type: mlx
     variant: mlx-q8
     parameters:
@@ -336,7 +480,7 @@ models:
       recommended_vram_gb: 20
       min_ram_gb: 24
       recommended_ram_gb: 32
-      disk_space_gb: 14
+      disk_space_gb: 1
       supported_devices:
       - MPS
       performance_notes: 'Apple Silicon native FLUX.1 Redux at 8-bit MLX. Image-variation model: pass
@@ -347,6 +491,20 @@ models:
       commercial_use: false
   flux.1-depth-dev-mlx:
     repo_id: black-forest-labs/FLUX.1-Depth-dev
+    # mflux reads the diffusers layout; the root single-file
+    # checkpoint is the same weights again, for ComfyUI.
+    allow_patterns:
+    - "transformer/*.json"
+    - "transformer/*.safetensors"
+    - "text_encoder/*.json"
+    - "text_encoder/*.safetensors"
+    - "text_encoder_2/*.json"
+    - "text_encoder_2/*.safetensors"
+    - "tokenizer/**"
+    - "tokenizer_2/**"
+    - "vae/*.json"
+    - "vae/*.safetensors"
+    - "*.json"
     model_type: mlx
     variant: mlx-q8
     parameters:
@@ -360,7 +518,7 @@ models:
       recommended_vram_gb: 20
       min_ram_gb: 24
       recommended_ram_gb: 32
-      disk_space_gb: 14
+      disk_space_gb: 41
       supported_devices:
       - MPS
       performance_notes: Apple Silicon native FLUX.1 Depth at 8-bit MLX. Pass image=<source> for depth-conditioned
@@ -384,7 +542,7 @@ models:
       recommended_vram_gb: 20
       min_ram_gb: 24
       recommended_ram_gb: 32
-      disk_space_gb: 16
+      disk_space_gb: 4
       supported_devices:
       - MPS
       performance_notes: Apple Silicon native FLUX.1 + InstantX Canny ControlNet at 8-bit MLX. Pass control_image=<canny
@@ -408,7 +566,7 @@ models:
       recommended_vram_gb: 20
       min_ram_gb: 24
       recommended_ram_gb: 32
-      disk_space_gb: 16
+      disk_space_gb: 4
       supported_devices:
       - MPS
       performance_notes: Apple Silicon native FLUX.1 + Jasper AI Upscaler ControlNet at 8-bit MLX. Pass

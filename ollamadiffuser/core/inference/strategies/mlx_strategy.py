@@ -58,6 +58,7 @@ SUPPORTED_MLX_VARIANTS = frozenset({
     "flux1-depth",       # FLUX.1 Depth (depth-conditioned generation)
     "flux1-controlnet",  # FLUX.1 ControlNet (canny / upscaler)
     "flux2",             # FLUX.2 klein 4B/9B (text-to-image)
+    "flux2-edit",        # FLUX.2 klein editing — several reference images at once
     "z_image",           # Z-Image / Z-Image-Turbo (text-to-image)
     "qwen-image",        # Qwen-Image / Qwen-Image-Edit
     # Families mflux added after our May 2026 line. Each one is a class and
@@ -94,6 +95,9 @@ _ALIAS_ROUTED = {
 # letting mflux crash deep inside the pipeline.
 _VARIANT_REQUIRED_INPUTS = {
     "flux1-kontext":    ["image"],
+    # flux2-edit is deliberately absent: with no reference it is a
+    # text-to-image model, which is the point of routing both jobs through
+    # one set of weights.
     "flux1-fill":       ["image", "mask_image"],
     "flux1-redux":      ["redux_images"],
     "flux1-depth":      ["image"],
@@ -325,6 +329,11 @@ class MLXStrategy(InferenceStrategy):
             mc = ModelConfig.from_name(model_name=mlx_model_name, base_model=None)
             return Flux1, mc
 
+        if variant == "flux2-edit":
+            from mflux.models.flux2.variants.edit.flux2_klein_edit import Flux2KleinEdit
+            from mflux.models.common.config.model_config import ModelConfig
+            return Flux2KleinEdit, ModelConfig.from_name(mlx_model_name or "klein-4b")
+
         if variant == "flux1-kontext":
             from mflux.models.flux.variants.kontext.flux_kontext import Flux1Kontext
             from mflux.models.common.config.model_config import ModelConfig
@@ -502,6 +511,12 @@ class MLXStrategy(InferenceStrategy):
 
         # Negative prompt: mflux accepts None or str.
         neg = negative_prompt or None
+        # Reference images, for the variants that take a list of them. Extra
+        # ones can be passed as `images=[...]`; one as `image=` works too.
+        variant_takes_list = self._variant in ("flux2-edit",)
+        extra_paths = self._materialize_image_path_list(kwargs.get("images"))
+        if variant_takes_list and extra_paths:
+            image_path = image_path or extra_paths[0]
 
         # Build the kwargs we'd LIKE to pass; filter to what this variant's
         # generate_image() actually accepts (Flux2Klein has no negative_prompt
@@ -514,6 +529,10 @@ class MLXStrategy(InferenceStrategy):
             "width": int(width),
             "guidance": float(guidance),
             "image_path": image_path,
+            # flux2-edit takes several references rather than one, and a
+            # caller with a single picture should not have to know that.
+            "image_paths": (extra_paths or ([image_path] if image_path else None))
+                           if variant_takes_list else None,
             "masked_image_path": masked_image_path,
             "depth_image_path": depth_image_path,
             "controlnet_image_path": controlnet_image_path,
@@ -549,10 +568,38 @@ class MLXStrategy(InferenceStrategy):
         try:
             generated = self._mlx_call(self._mlx_model.generate_image, **gen_kwargs)
             # generated is mflux.utils.generated_image.GeneratedImage; .image is PIL.
-            return self._sanitize_image(generated.image)
+            image = self._sanitize_image(generated.image)
         except Exception as e:
             logger.error(f"MLX generation failed: {e}", exc_info=True)
             return self._create_error_image(str(e), prompt)
+
+        # Some seeds come back as undenoised latents: a valid, full-size PNG
+        # of coloured confetti. Measured on FLUX.1-Kontext int8 with one
+        # image and one prompt — seed 1234 draws the portrait, seed
+        # 473366517 draws static, and 28 steps or 7 makes no difference. The
+        # failure is silent, so it is checked for rather than hoped about.
+        if not self.looks_like_noise(image):
+            return image
+        if kwargs.get("seed") is None:
+            retry_seed = int(used_seed) % 90_000 + 1_000
+            logger.warning(
+                f"MLX ({self._variant}) returned noise at seed {used_seed}; "
+                f"one more try at {retry_seed}"
+            )
+            gen_kwargs["seed"] = retry_seed
+            try:
+                generated = self._mlx_call(self._mlx_model.generate_image, **gen_kwargs)
+                image = self._sanitize_image(generated.image)
+            except Exception as e:
+                logger.error(f"MLX retry failed: {e}", exc_info=True)
+                return self._create_error_image(str(e), prompt)
+            if not self.looks_like_noise(image):
+                return image
+        raise RuntimeError(
+            f"{self._variant} returned noise rather than a picture "
+            f"(seed {gen_kwargs.get('seed')}). Try another seed, or fewer "
+            f"quantisation bits — this is the model failing, not the request."
+        )
 
     @staticmethod
     def _materialize_image_path(image_arg) -> Optional[str]:

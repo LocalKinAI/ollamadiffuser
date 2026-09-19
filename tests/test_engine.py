@@ -286,3 +286,36 @@ class TestInferenceStrategyBase:
         img = s._create_error_image("test error", "test prompt")
         assert isinstance(img, Image.Image)
         assert img.size == (512, 512)
+
+
+class TestStrengthIsNotInvented:
+    """An editor must not be handed a strength nobody asked for.
+
+    `strength` is a fraction of the step count. A default of 0.75 forwarded
+    on every image-conditioned call left FLUX.2 klein — four steps — with
+    one, and one step returns confetti. Two layers had the same default, so
+    removing it from the endpoint alone changed nothing.
+    """
+
+    def _engine_with_spy(self):
+        from unittest.mock import MagicMock
+        from PIL import Image
+        from ollamadiffuser.core.inference.engine import InferenceEngine
+
+        engine = InferenceEngine()
+        spy = MagicMock()
+        spy.generate.return_value = Image.new("RGB", (8, 8))
+        engine._strategy = spy
+        return engine, spy
+
+    def test_an_image_alone_does_not_add_strength(self):
+        from PIL import Image
+        engine, spy = self._engine_with_spy()
+        engine.generate_image(prompt="x", image=Image.new("RGB", (8, 8)))
+        assert "strength" not in spy.generate.call_args.kwargs
+
+    def test_an_explicit_strength_is_passed(self):
+        from PIL import Image
+        engine, spy = self._engine_with_spy()
+        engine.generate_image(prompt="x", image=Image.new("RGB", (8, 8)), strength=0.4)
+        assert spy.generate.call_args.kwargs["strength"] == 0.4

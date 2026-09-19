@@ -99,3 +99,53 @@ class TestVideoEndpoint:
         resp = tc.post("/api/generate/video", data={"prompt": "a cat"})
         assert resp.status_code == 400
         assert "video model" in resp.json()["detail"]
+
+
+class TestNoiseGuard:
+    """A model can return undenoised latents: a valid PNG of confetti.
+
+    Every cheap check passes it — it decodes, it is the right size, it is
+    megabytes — so without a look at the pixels the failure reaches the user
+    as art. Measured on FLUX.1-Kontext int8: the same weights, prompt and
+    input image draw a portrait at seed 1234 and static at seed 473366517.
+    """
+
+    def test_static_is_caught_and_a_picture_is_not(self):
+        import numpy as np
+        from PIL import Image
+        from ollamadiffuser.core.inference.base import InferenceStrategy
+
+        rng = np.random.default_rng(0)
+        static = Image.fromarray((rng.random((256, 256, 3)) * 255).astype("uint8"))
+        gradient = Image.fromarray(
+            np.tile(np.linspace(0, 255, 256, dtype="uint8"), (256, 1)))
+        assert InferenceStrategy.looks_like_noise(static) is True
+        assert InferenceStrategy.looks_like_noise(gradient) is False
+
+    def test_a_busy_photograph_is_not_noise(self):
+        """The check has to survive detail, not just flat images.
+
+        One metric could not: adjacent-pixel difference reads 14.4 for a
+        photograph of a dog in grass and 14.7 for a failed generation. This
+        builds a stand-in for the busy photograph — fine texture on top of a
+        composition — and it must pass while static does not.
+        """
+        import numpy as np
+        from PIL import Image
+        from ollamadiffuser.core.inference.base import InferenceStrategy
+
+        rng = np.random.default_rng(1)
+        y, x = np.mgrid[0:256, 0:256]
+        composition = (128 + 100 * np.sin(x / 40.0) * np.cos(y / 55.0))
+        texture = rng.normal(0, 28, (256, 256))
+        busy = np.clip(composition + texture, 0, 255).astype("uint8")
+        assert InferenceStrategy.looks_like_noise(Image.fromarray(busy)) is False
+
+    def test_a_detector_that_cannot_run_passes_the_image(self):
+        from ollamadiffuser.core.inference.base import InferenceStrategy
+
+        class NotAnImage:
+            def convert(self, mode):
+                raise ValueError("nope")
+
+        assert InferenceStrategy.looks_like_noise(NotAnImage()) is False

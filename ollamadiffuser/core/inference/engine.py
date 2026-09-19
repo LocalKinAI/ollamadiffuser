@@ -160,10 +160,19 @@ class InferenceEngine:
         control_guidance_end: float = 1.0,
         image: Optional[Image.Image] = None,
         mask_image: Optional[Image.Image] = None,
-        strength: float = 0.75,
+        strength: Optional[float] = None,
         **kwargs,
     ) -> Image.Image:
-        """Generate an image using the current strategy."""
+        """Generate an image using the current strategy.
+
+        ``strength`` has no default on purpose. It used to be 0.75 and was
+        forwarded whenever an image was present, so every editor got it
+        whether or not the caller said anything — and a strength is a
+        fraction of the step count. On FLUX.2 klein, which denoises in four
+        steps, 0.75 leaves one step and the model returns confetti; the
+        endpoint had already stopped sending a default when this one put it
+        back. Models that want a default have their own.
+        """
         if not self._strategy:
             raise RuntimeError("No model loaded")
 
@@ -175,7 +184,7 @@ class InferenceEngine:
             gen_kwargs["image"] = image
         if mask_image is not None:
             gen_kwargs["mask_image"] = mask_image
-        if image is not None or mask_image is not None:
+        if (image is not None or mask_image is not None) and strength is not None:
             gen_kwargs["strength"] = strength
 
         # Pass ControlNet params

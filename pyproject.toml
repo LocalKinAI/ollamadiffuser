@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ollamadiffuser"
-version = "2.0.24"
+version = "2.0.25"
 authors = [
     {name = "LocalKinAI Team", email = "contact@localkin.ai"}
 ]
@@ -81,13 +81,13 @@ gguf = [
 mlx = [
     # Apple Silicon native FLUX-family via MLX. Wheel is mac-arm64 only;
     # pip will refuse to install elsewhere. See issue #7.
-    "mflux>=0.17.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "mflux>=0.19.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
 full = [
     "stable-diffusion-cpp-python>=0.1.0",
     "gguf>=0.1.0",
     "mcp[cli]>=1.0.0",
-    "mflux>=0.17.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "mflux>=0.19.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
 mcp = [
     "mcp[cli]>=1.0.0",

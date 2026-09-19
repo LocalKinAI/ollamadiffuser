@@ -169,6 +169,50 @@ class InferenceStrategy(ABC):
             return False
 
     @staticmethod
+    def looks_like_noise(image: Image.Image, threshold: float = 1.0) -> bool:
+        """True when an image is garbage rather than a picture.
+
+        A model can fail by returning latents it never denoised: a full-size,
+        perfectly valid PNG of confetti. Every cheap check passes it — it
+        decodes, it is the right size, it is megabytes — so the failure
+        reaches the user as art.
+
+        One number is not enough. Adjacent-pixel difference alone (measured
+        on a 256px thumbnail) reads 36 for static and 4 for a portrait, but a
+        busy photograph of a dog in grass reads 14.4 and a failure from
+        FLUX.2 klein — driven at 28 steps when it wants 4 — reads 14.7. They
+        overlap.
+
+        What separates them is what survives being shrunk to 16×16. A
+        photograph still has a composition down there; garbage turns to mush.
+        So this compares high-frequency energy against low-frequency
+        structure, and the ratio is unambiguous — measured over 45 real
+        photographs and two failures:
+
+            45 photographs (busiest: a shiba in grass)   0.06 – 0.38
+            FLUX.2 klein at the wrong step count         2.86
+            FLUX.1-Kontext on a seed that breaks it      6.60
+
+        The threshold sits at 1.0, a factor of 2.6 clear of both sides.
+        """
+        try:
+            grey = image.convert("L")
+            high = grey.copy()
+            high.thumbnail((256, 256))
+            arr = np.asarray(high, dtype=np.float32)
+            if arr.size < 64:
+                return False
+            dx = np.abs(np.diff(arr, axis=1)).mean()
+            dy = np.abs(np.diff(arr, axis=0)).mean()
+            detail = float((dx + dy) / 2)
+            structure = float(np.asarray(
+                grey.resize((16, 16), Image.LANCZOS), dtype=np.float32).std())
+            return detail / max(structure, 0.01) > threshold
+        except Exception:
+            # A detector that cannot run must not fail a generation.
+            return False
+
+    @staticmethod
     def _sanitize_image(image: Image.Image) -> Image.Image:
         """Clamp NaN/Inf pixels to avoid 'invalid value encountered in cast' on MPS."""
         arr = np.array(image, dtype=np.float32)

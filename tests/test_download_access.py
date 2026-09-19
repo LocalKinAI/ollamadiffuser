@@ -24,20 +24,43 @@ from ollamadiffuser.core.utils.download_utils import (
 )
 
 
+def hub_error(cls, message, *, status_code=403, repo_id=None):
+    """Build a hub error the way the installed huggingface_hub wants it.
+
+    hub 1.x made ``response`` a required keyword-only argument on
+    HfHubHTTPError; older versions took the message alone. Constructing these
+    by hand in each test pinned us to one of those, so do it in one place and
+    let either shape work.
+    """
+    try:
+        import httpx
+        response = httpx.Response(
+            status_code, request=httpx.Request("GET", "https://huggingface.co")
+        )
+        error = cls(message, response=response)
+    except TypeError:                       # pre-1.x: message only
+        error = cls(message)
+    if repo_id is not None:
+        error.repo_id = repo_id
+    return error
+
+
 class TestAccessProblem:
     def test_a_gated_repo_says_where_to_ask(self):
-        error = GatedRepoError('403 Client Error')
-        error.repo_id = 'dgrauet/ltx-2.5-mlx-q8'
+        error = hub_error(GatedRepoError, '403 Client Error',
+                          repo_id='dgrauet/ltx-2.5-mlx-q8')
         advice = access_problem(error)
         assert 'huggingface.co/dgrauet/ltx-2.5-mlx-q8' in advice
         assert 'Request access' in advice
         assert 'hf auth login' in advice        # not the retired huggingface-cli
 
     def test_a_missing_repo_says_check_the_id(self):
-        assert 'repo_id' in access_problem(RepositoryNotFoundError('404'))
+        assert 'repo_id' in access_problem(
+            hub_error(RepositoryNotFoundError, '404', status_code=404))
 
     def test_a_missing_file_points_at_the_patterns(self):
-        assert 'allow_patterns' in access_problem(EntryNotFoundError('404'))
+        assert 'allow_patterns' in access_problem(
+            hub_error(EntryNotFoundError, '404', status_code=404))
 
     def test_an_ordinary_failure_is_not_one_of_these(self):
         assert access_problem(ConnectionResetError('reset by peer')) is None
@@ -69,16 +92,16 @@ class TestNoRetryOnRefusal:
         return calls['n'], slept, str(caught.value)
 
     def test_a_gated_repo_is_tried_once(self):
-        error = GatedRepoError('403')
-        error.repo_id = 'dgrauet/ltx-2.5-mlx-q8'
+        error = hub_error(GatedRepoError, '403',
+                          repo_id='dgrauet/ltx-2.5-mlx-q8')
         tries, slept, message = self._refuse(error)
         assert tries == 1, 'retrying a 403 only buries the reason'
         slept.assert_not_called()
         assert 'Request access' in message
 
     def test_the_message_names_the_repo(self):
-        error = GatedRepoError('403')
-        error.repo_id = 'dgrauet/ltx-2.5-mlx-q8'
+        error = hub_error(GatedRepoError, '403',
+                          repo_id='dgrauet/ltx-2.5-mlx-q8')
         _, _, message = self._refuse(error)
         assert message.startswith('dgrauet/ltx-2.5-mlx-q8:')
 
