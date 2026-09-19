@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.26] - 2026-09-19
+
+### 🧾 The registry pulls what the loader loads
+
+An audit of every registry `repo_id` against HuggingFace, and of every mflux
+alias against the repo mflux resolves it to. Nothing in the registry is dead
+(55 repos, no 404s), but three entries downloaded the wrong thing.
+
+- **`qwen-image-mlx` and `qwen-image-edit-mlx` pulled a checkpoint mflux never
+  asked for.** `repo_id` said `Qwen/Qwen-Image` / `Qwen/Qwen-Image-Edit`, while
+  mflux's `qwen-image` / `qwen-image-edit` aliases mean `Qwen/Qwen-Image-2512`
+  and `Qwen/Qwen-Image-Edit-2509` — so `pull` fetched 58 GB of the older
+  weights. Both entries now name the repo mflux loads, and `disk_space_gb`
+  says 58 (it said 22; the repos are 57.7 GB).
+- **`seedvr2-3b-mlx` downloaded 3.4 GB it never opened.** `allow_patterns:
+  ["*3b*"]` matched the fp8 file as well as the fp16 one; mflux's weight
+  definition reads exactly `seedvr2_ema_3b_fp16.safetensors` and
+  `ema_vae_fp16.safetensors`. The patterns are now those names, and the disk
+  figure is the measured 8 GB rather than 12. (A `*7b*` glob would match four
+  files and 49 GB — pin names when adding 7B.)
+- **New test: registry `repo_id` must equal what mflux resolves the alias to**
+  (`TestRegistryPullsWhatMfluxLoads`). The next mflux release that moves an
+  alias to a newer checkpoint fails this instead of costing users a download.
+- The migration snapshot still refuses a pre-migration model being repointed —
+  but a move made on purpose can now be recorded in `_DELIBERATE_REPOINTS`
+  with its reason, which is how the two Qwen entries pass.
+
+### 🛠 `enable gguf` builds for the GPU you have
+
+`stable-diffusion-cpp-python` builds CPU-only unless `CMAKE_ARGS` says
+otherwise, and says nothing about it. `enable gguf` set the Metal flag on
+macOS and nothing anywhere else, so **on an NVIDIA machine it produced a CPU
+build that looked like a success.** It now:
+
+- builds with `-DSD_CUDA=ON` when `nvidia-smi -L` works (asked of the driver,
+  not of torch — a CPU-only torch wheel reports no CUDA on a machine with a GPU);
+- leaves a `CMAKE_ARGS` you already exported alone (ROCm, Vulkan, SYCL);
+- says plainly when the result will be a CPU build, and how to choose otherwise.
+
+### 📚 Docs
+
+- **`CONTRIBUTING.md`** — how to add a model as a data-only PR against
+  `models.yaml`: the schema, which `model_type` to pick, how to check what
+  repo an mflux alias resolves to, and why disk figures should be measured.
+- README marks the LTX-2 video entries **experimental**: the runtime and the
+  weight packs are one author's community port, not Lightricks' release.
+
+**243 passed, 8 skipped.**
+
 ## [2.0.25] - 2026-09-18
 
 ### 🎭 One model that changes a picture without changing who is in it

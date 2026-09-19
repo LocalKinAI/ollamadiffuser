@@ -362,7 +362,9 @@ models:
       requires_agreement: false
       commercial_use: true
   qwen-image-mlx:
-    repo_id: Qwen/Qwen-Image
+    # mflux's `qwen-image` alias resolves to the 2512 checkpoint. Pulling the
+    # original Qwen/Qwen-Image here handed mflux 58 GB of the older weights.
+    repo_id: Qwen/Qwen-Image-2512
     model_type: mlx
     variant: mlx-q8
     parameters:
@@ -376,7 +378,7 @@ models:
       recommended_vram_gb: 24
       min_ram_gb: 24
       recommended_ram_gb: 64
-      disk_space_gb: 22
+      disk_space_gb: 58
       supported_devices:
       - MPS
       performance_notes: 20B Qwen-Image at 8-bit MLX. Requires Mac Pro M1 32GB+ — too large for M4 16GB.
@@ -386,7 +388,8 @@ models:
       requires_agreement: false
       commercial_use: true
   qwen-image-edit-mlx:
-    repo_id: Qwen/Qwen-Image-Edit
+    # Same story: mflux's `qwen-image-edit` alias is the 2509 checkpoint.
+    repo_id: Qwen/Qwen-Image-Edit-2509
     model_type: mlx
     variant: mlx-q8
     parameters:
@@ -400,7 +403,7 @@ models:
       recommended_vram_gb: 24
       min_ram_gb: 24
       recommended_ram_gb: 64
-      disk_space_gb: 22
+      disk_space_gb: 58
       supported_devices:
       - MPS
       performance_notes: Apple Silicon native Qwen-Image-Edit (20B) at 8-bit MLX. Image-editing companion
@@ -1711,9 +1714,11 @@ models:
   seedvr2-3b-mlx:
     repo_id: numz/SeedVR2_comfyUI
     # The repo carries every SeedVR2 variant — 7B included, at 16 GB each.
+    # Exact names, from mflux's seedvr2_weight_definition: a "*3b*" glob also
+    # matched the 3.4 GB fp8 file, which mflux never opens.
     allow_patterns:
-    - "*3b*"
-    - "*vae*"
+    - "seedvr2_ema_3b_fp16.safetensors"
+    - "ema_vae_fp16.safetensors"
     - "*.json"
     model_type: mlx
     variant: mlx-q8
@@ -1726,7 +1731,7 @@ models:
       recommended_vram_gb: 16
       min_ram_gb: 16
       recommended_ram_gb: 32
-      disk_space_gb: 12
+      disk_space_gb: 8
       supported_devices:
       - MPS
       performance_notes: Apple Silicon native SeedVR2 3B at 8-bit MLX — an upscaler, not a generator.

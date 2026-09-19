@@ -47,6 +47,19 @@ class TestZeroLossMigration:
     # opposite of what the snapshot is for.
     _IDENTITY_FIELDS = ("repo_id", "model_type")
 
+    # Repoints made on purpose. The guard below exists to stop an entry being
+    # moved *quietly*; a move that is written down here, with its reason, is
+    # the opposite of quiet. (name, field) -> (snapshot value, value now).
+    _DELIBERATE_REPOINTS = {
+        # mflux's `qwen-image` / `qwen-image-edit` aliases load the 2512 and
+        # 2509 checkpoints. Pulling the originals gave mflux 58 GB of weights
+        # it had not asked for. test_mlx_strategy pins repo_id to the alias.
+        ("qwen-image-mlx", "repo_id"):
+            ("Qwen/Qwen-Image", "Qwen/Qwen-Image-2512"),
+        ("qwen-image-edit-mlx", "repo_id"):
+            ("Qwen/Qwen-Image-Edit", "Qwen/Qwen-Image-Edit-2509"),
+    }
+
     def test_registry_keeps_every_pre_migration_model(self):
         """The guarantee: no pre-migration model was lost or silently repointed."""
         snapshot = json.loads(_SNAPSHOT.read_text(encoding="utf-8"))
@@ -57,12 +70,23 @@ class TestZeroLossMigration:
 
         for name, cfg in snapshot.items():
             for field in self._IDENTITY_FIELDS:
-                if field in cfg:
-                    assert loaded[name].get(field) == cfg[field], (
-                        f"{name}.{field} changed from {cfg[field]!r} to "
-                        f"{loaded[name].get(field)!r} — a pre-migration model "
-                        f"must keep pointing at the same thing"
+                if field not in cfg:
+                    continue
+                expected = cfg[field]
+                repoint = self._DELIBERATE_REPOINTS.get((name, field))
+                if repoint is not None:
+                    was, now = repoint
+                    assert was == cfg[field], (
+                        f"_DELIBERATE_REPOINTS[{name}.{field}] says the snapshot "
+                        f"had {was!r}; it has {cfg[field]!r}"
                     )
+                    expected = now
+                assert loaded[name].get(field) == expected, (
+                    f"{name}.{field} changed from {cfg[field]!r} to "
+                    f"{loaded[name].get(field)!r} — a pre-migration model "
+                    f"must keep pointing at the same thing, unless the move "
+                    f"is recorded in _DELIBERATE_REPOINTS with its reason"
+                )
 
     def test_model_count_never_shrinks(self):
         snapshot = json.loads(_SNAPSHOT.read_text(encoding="utf-8"))

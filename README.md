@@ -6,6 +6,10 @@
 
 ## 🆕 What's New
 
+### v2.0.26 — the registry pulls what the loader loads
+
+`qwen-image-mlx` / `qwen-image-edit-mlx` were pulling 58 GB of a checkpoint mflux never loads (now `Qwen-Image-2512` / `Qwen-Image-Edit-2509`), and `seedvr2-3b-mlx` fetched a 3.4 GB fp8 file it never opened. `ollamadiffuser enable gguf` now builds with CUDA on NVIDIA machines instead of silently producing a CPU build. New: [CONTRIBUTING.md](CONTRIBUTING.md) — adding a model is a data-only PR.
+
 ### v2.0.20 — One-line `curl | sh` installer (no system Python needed)
 
 `curl -fsSL .../install.sh | sh` now installs a fully **isolated** OllamaDiffuser via [uv](https://github.com/astral-sh/uv): a standalone Python + the compile-free core under `~/.ollamadiffuser`, with a launcher on your PATH. It doesn't touch your system Python, needs no compiler, and auto-enables MLX on Apple Silicon — the Ollama-style zero-friction install.
@@ -138,7 +142,7 @@ Most models work **without any token** -- just install and go. See [Hugging Face
 - **🌐 Multiple Interfaces**: CLI, Python API, Web UI, and REST API
 - **📦 Model Management**: Easy installation and switching between models
 - **⚡ Performance Optimized**: Memory-efficient with GPU acceleration
-- **🧪 Test Suite**: 183 tests across settings, registry, engine, API, MPS, MLX, LTX-2 video, and MCP
+- **🧪 Test Suite**: 243 tests across settings, registry, engine, API, MPS, MLX, LTX-2 video, and MCP
 
 ### Option 1: Install from PyPI (Recommended)
 ```bash
@@ -409,6 +413,11 @@ Video entries (`model_type: ltx-video-mlx`) run [LTX-2](https://github.com/Light
 audio**, image-to-video, audio-to-video, and LTX-2.5's predicted durations. This is the one strategy
 that shells out rather than importing — ltx-2-mlx is a three-package monorepo installed with `uv sync`
 that manages its own weight packs, and its CLI is the surface its author supports.
+
+> **Experimental.** Both the runtime and the weight packs (`dgrauet/ltx-2.*-mlx`) are one
+> author's community port, not Lightricks' upstream release, and they are young — expect the
+> CLI and pack layout to move. If a pack is renamed or withdrawn these entries stop pulling;
+> please [open an issue](https://github.com/LocalKinAI/ollamadiffuser/issues) if that happens.
 
 | Entry | Pack | Disk | RAM | Default mode |
 |---|---|---|---|---|

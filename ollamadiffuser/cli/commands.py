@@ -10,6 +10,21 @@ from ..core.config.settings import settings
 console = Console()
 
 
+def _has_nvidia_gpu() -> bool:
+    """True when an NVIDIA driver is present. nvidia-smi rather than torch:
+    a CPU-only torch wheel says no CUDA on a machine that has a GPU."""
+    import shutil
+
+    smi = shutil.which("nvidia-smi")
+    if not smi:
+        return False
+    try:
+        return subprocess.run([smi, "-L"], capture_output=True, timeout=10).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+
 # Optional backends that are NOT installed by default, keyed by the name
 # users pass to `ollamadiffuser enable <name>`. The default install is
 # intentionally compile-free; these are opt-in because they either need
@@ -20,6 +35,7 @@ def _build_enable_command(backend: str):
     Returns ``(argv, env_overrides_or_None, human_note)``.
     Raises ``ValueError`` for an unknown backend or an unsupported platform.
     """
+    import os
     import platform
 
     if backend == "mlx":
@@ -36,18 +52,28 @@ def _build_enable_command(backend: str):
         )
 
     if backend == "gguf":
+        # stable-diffusion-cpp builds CPU-only unless told otherwise, and says
+        # nothing about it — so pick the GPU backend here. A CMAKE_ARGS the
+        # user already exported wins: they may want ROCm, Vulkan or SYCL.
         env_overrides = None
-        # Metal GPU acceleration on Mac; other platforms use the library's
-        # default toolchain (users can pre-set CMAKE_ARGS for CUDA, etc.).
-        if platform.system() == "Darwin":
+        note = "Low-VRAM quantized models. Compiles a native extension (~1-3 min)."
+        if os.environ.get("CMAKE_ARGS"):
+            note += " Using your CMAKE_ARGS."
+        elif platform.system() == "Darwin":
             env_overrides = {"CMAKE_ARGS": "-DSD_METAL=ON"}
+        elif _has_nvidia_gpu():
+            env_overrides = {"CMAKE_ARGS": "-DSD_CUDA=ON"}
+            note += " NVIDIA GPU found: building with CUDA (needs the CUDA toolkit)."
+        else:
+            note += (" No GPU backend detected: this will be a CPU build. For another"
+                     " backend, export CMAKE_ARGS first (e.g. -DSD_VULKAN=ON).")
         return (
             [
                 sys.executable, "-m", "pip", "install",
                 "stable-diffusion-cpp-python>=0.1.0", "gguf>=0.1.0",
             ],
             env_overrides,
-            "Low-VRAM quantized models. Compiles a native extension (~1-3 min).",
+            note,
         )
 
     if backend == "mcp":

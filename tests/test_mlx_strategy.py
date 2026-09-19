@@ -630,3 +630,42 @@ class TestUnsupported:
         info = s.get_info()
         assert info["backend"] == "mlx"
         assert info["mflux_variant"] == "flux1"
+
+
+# --------------------------------------------------------------------------
+# The registry and mflux must agree on which repo an alias means
+# --------------------------------------------------------------------------
+
+@_needs_mflux
+class TestRegistryPullsWhatMfluxLoads:
+    """`pull` downloads `repo_id`; mflux loads whatever its alias resolves to.
+
+    When those differ the user pays for it twice over: qwen-image-mlx pointed
+    at Qwen/Qwen-Image while mflux's `qwen-image` alias meant
+    Qwen/Qwen-Image-2512 — 58 GB of a checkpoint mflux was never asked for.
+    An mflux release that moves an alias to a newer checkpoint will trip this,
+    which is the point: the registry entry has to move with it.
+    """
+
+    def test_alias_routed_entries_point_at_the_repo_mflux_resolves(self):
+        from mflux.models.common.config.model_config import ModelConfig
+        from ollamadiffuser.core.config.model_registry import ModelRegistry
+
+        checked = 0
+        for name, cfg in ModelRegistry()._registry.items():
+            if cfg.get("model_type") != "mlx":
+                continue
+            params = cfg.get("parameters") or {}
+            variant = params.get("mlx_variant")
+            # Only families whose config comes from the alias alone. The FLUX
+            # variants use short names ("dev", "canny") that mean something
+            # else, or nothing, to ModelConfig.from_name.
+            if variant not in mlx_strategy._ALIAS_ROUTED and variant != "qwen-image":
+                continue
+            resolved = ModelConfig.from_name(params["mlx_model_name"]).model_name
+            assert cfg["repo_id"] == resolved, (
+                f"{name}: pull fetches {cfg['repo_id']!r} but mflux loads "
+                f"{resolved!r} for alias {params['mlx_model_name']!r}"
+            )
+            checked += 1
+        assert checked >= 8, "the filter above stopped matching anything"
