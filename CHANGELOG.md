@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🕺 A video that follows another video
+
+- **`control` on `/api/generate/video`** (and `control=` on `generate_video`) —
+  a reference video the generation follows frame for frame, through
+  `ltx-2-mlx ic-lora`: a pose skeleton, a depth pass, canny edges. With
+  `image` as the first frame it is motion transfer — the still says who and
+  where, the control video says how she moves — which is how a movement no
+  prompt can describe gets made. Asked in words for tai chi, LTX-2.3 gives
+  slow arm-waving; shown a skeleton taken from a real form, it gave a bow
+  stance, a rising hand and a two-armed push, knees bent throughout. `lora`
+  names the control LoRA (a path or a repo id); left out it is Lightricks'
+  union control, from `<models_dir>/ltx-loras/` when the file is there —
+  the CLI resolves a repo id through the hub, and the hub is what the
+  offline-first run exists to keep out of the way. Measured on an M3 Ultra:
+  q4, 704², 97 frames in 97 s, 241 frames in 273 s; q8 120 s for 97, no
+  visible gain. A control video and an audio track are different pipelines
+  and asking for both is refused.
+
+### 🙂 Is it still the same person?
+
+- **`POST /api/face/compare`** — `anchor` and one or more `images`; back comes,
+  in upload order, whether each has a face, how wide it is, and its cosine
+  similarity to the anchor's. For a pipeline that edits a portrait into scenes
+  and films them, "was the identity kept" needs a number: a vision-language
+  model shown a profile that turned to the lens as somebody else reported
+  that nothing had changed. It needs no diffusion model loaded, so it answers
+  from whichever server is up. The models are OpenCV Zoo's YuNet (MIT, 0.2 MB)
+  and SFace (Apache-2.0, 37 MB), run by `cv2.FaceDetectorYN` /
+  `cv2.FaceRecognizerSF` with nothing else to install — chosen over the
+  better-known ArcFace weights that ship with insightface, which are for
+  non-commercial research only. Nothing is fetched by serving: the two files
+  come from `python -m ollamadiffuser.core.utils.face_match --download`, and
+  until they are there the endpoint answers 503 with that sentence.
+
+### 🖼️ An edit can be shown more than one picture
+
+- **`/api/generate/img2img` takes `images`** — further reference pictures,
+  for an editor that accepts several (FLUX.2 klein: up to four). `image`
+  stays the first: it sets the output size and is "image 1" in the prompt;
+  the extras are "image 2", "image 3"… in upload order. The strategy layer
+  could already do this (`images=[...]`); the HTTP endpoint could not be
+  asked to. It is what lets one picture carry *who* and another *where*:
+  measured with a portrait and a wide frame of a park, three different
+  camera positions came back in the same pavilion, under the same willows,
+  in the same clothes — which the same words without the second picture had
+  not managed once in four. Nothing is forwarded when nothing extra is
+  uploaded, so a model that takes one picture never sees a keyword it does
+  not know. 16–25 s with two references on klein 4B, against ~11 s with one.
+
 ### 🔌 A local video model runs without the internet
 
 - **`ltx-2-mlx` is run offline first.** The CLI resolves its pack through the

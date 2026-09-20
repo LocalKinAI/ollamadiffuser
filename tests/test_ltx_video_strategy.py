@@ -573,6 +573,46 @@ class TestPatternsMatchTheMode:
                 f"{name}: fetches {sorted(transformers)}"
 
 
+class TestControlVideo:
+    """A control video picks `ic-lora`: motion from a reference, looks from a still."""
+
+    def test_control_picks_ic_lora_with_the_lora_and_the_video(self):
+        argv = ltx.build_argv("ltx", "she practises tai chi", "out.mp4", pack="/packs/q8",
+                              frames=241, width=704, height=704, image="her.png",
+                              control="pose.mp4", lora="/loras/union.safetensors")
+        assert argv[1] == "ic-lora"
+        at = argv.index("--lora")
+        assert argv[at:at + 3] == ["--lora", "/loras/union.safetensors", "1.0"]
+        at = argv.index("--video-conditioning")
+        assert argv[at:at + 3] == ["--video-conditioning", "pose.mp4", "1.0"]
+        assert argv[argv.index("--frames") + 1] == "241"
+        # The still is pinned to the first frame, fully.
+        at = argv.index("--image")
+        assert argv[at:at + 4] == ["--image", "her.png", "0", "1.0"]
+        assert "--frame-rate" in argv
+
+    def test_none_of_generates_mode_flags_come_along(self):
+        argv = ltx.build_argv("ltx", "p", "o.mp4", mode="two-stage", steps=8, enhance_prompt=True,
+                              control="pose.mp4", lora="x.safetensors")
+        for flag in ("--two-stage", "--two-stages-hq", "--distilled", "--one-stage", "--steps", "--enhance-prompt"):
+            assert flag not in argv, flag
+
+    def test_no_lora_named_means_union_control(self, monkeypatch):
+        monkeypatch.setattr(ltx, "default_control_lora", lambda: ltx.UNION_CONTROL)
+        argv = ltx.build_argv("ltx", "p", "o.mp4", control="pose.mp4")
+        assert argv[argv.index("--lora") + 1] == "Lightricks/LTX-2.3-22b-IC-LoRA-Union-Control"
+
+    def test_control_and_audio_are_different_pipelines(self):
+        with pytest.raises(ValueError):
+            ltx.build_argv("ltx", "p", "o.mp4", control="pose.mp4", audio="voice.wav")
+
+    def test_strengths_are_passed_as_given(self):
+        argv = ltx.build_argv("ltx", "p", "o.mp4", control="pose.mp4", lora="x",
+                              control_strength=0.8, lora_strength=0.9)
+        assert argv[argv.index("--lora") + 2] == "0.9"
+        assert argv[argv.index("--video-conditioning") + 2] == "0.8"
+
+
 class TestOfflineFirst:
     """A local model must not need the internet.
 

@@ -6,7 +6,7 @@ import io
 import tempfile
 from pathlib import Path
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -242,8 +242,18 @@ def create_app() -> FastAPI:
         seed: Optional[int] = Form(None),
         strength: Optional[float] = Form(None),
         image: UploadFile = File(...),
+        images: Optional[List[UploadFile]] = File(None),
     ):
         """Image-to-image generation.
+
+        ``images`` are further reference pictures, for an editor that takes
+        several (FLUX.2 klein: up to four). ``image`` stays the first — it
+        sets the output size and is "image 1" in the prompt; the extras are
+        "image 2", "image 3"… in upload order. It is what lets one picture
+        carry *who* and another *where*: a face from a portrait, a place and
+        an outfit from an earlier frame. Nothing is forwarded when nothing
+        extra is uploaded, so a model that takes one picture never sees a
+        keyword it does not know.
 
         ``strength`` defaults to nothing rather than to 0.75. A default here
         is not neutral: it is a fraction of the step count, and on a
@@ -256,6 +266,11 @@ def create_app() -> FastAPI:
 
         image_data = await image.read()
         input_image = Image.open(io.BytesIO(image_data)).convert("RGB")
+        references = [input_image]
+        for extra in images or []:
+            data = await extra.read()
+            if data:  # an empty part is a form field left blank, not a picture
+                references.append(Image.open(io.BytesIO(data)).convert("RGB"))
 
         try:
             result = await asyncio.to_thread(
@@ -268,6 +283,7 @@ def create_app() -> FastAPI:
                 height=input_image.height,
                 seed=seed,
                 image=input_image,
+                **({"images": references} if len(references) > 1 else {}),
                 **({"strength": strength} if strength is not None else {}),
             )
             return _image_to_response(result)
@@ -281,6 +297,39 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=500, detail="Image-to-image generation failed")
 
     # --- Video generation (LTX-2 on Apple Silicon) ---
+
+    @app.post("/api/face/compare")
+    async def face_compare(
+        anchor: UploadFile = File(...),
+        images: List[UploadFile] = File(...),
+    ):
+        """Is it still the same person? The largest face in each of ``images``
+        against the largest face in ``anchor``, as cosine similarity.
+
+        Needs no model loaded — it is not a diffusion model's job — so it
+        answers from whichever server is up. Frames in, numbers out:
+        ``{"results": [{"found": true, "width": 138, "similarity": 0.61}, …]}``,
+        in upload order; a frame with no face in it says so instead of
+        scoring. 503 with the way to fix it when the two model files have not
+        been fetched; see ``core/utils/face_match.py`` for which and why.
+        """
+        from ..core.utils.face_match import FaceMatcher, FaceModelsMissing
+
+        matcher = getattr(app.state, "face_matcher", None)
+        if matcher is None:
+            matcher = app.state.face_matcher = FaceMatcher()
+        try:
+            who = Image.open(io.BytesIO(await anchor.read())).convert("RGB")
+            pictures = []
+            for upload in images:
+                data = await upload.read()
+                if data:
+                    pictures.append(Image.open(io.BytesIO(data)).convert("RGB"))
+            return await asyncio.to_thread(matcher.compare, who, pictures)
+        except FaceModelsMissing as e:
+            raise HTTPException(status_code=503, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
     @app.post("/api/generate/video")
     async def generate_video(
@@ -297,6 +346,9 @@ def create_app() -> FastAPI:
         enhance_prompt: Optional[bool] = Form(None),
         image: Optional[UploadFile] = File(None),
         audio: Optional[UploadFile] = File(None),
+        control: Optional[UploadFile] = File(None),
+        control_strength: Optional[float] = Form(None),
+        lora: Optional[str] = Form(None),
     ):
         """Generate a video, and return the mp4.
 
@@ -304,6 +356,13 @@ def create_app() -> FastAPI:
         reference image (image-to-video) and an audio track (audio-to-video,
         which is how a voice drives a face). Both are optional; with neither
         this is text-to-video.
+
+        ``control`` is a third: a reference video the generation follows frame
+        for frame (IC-LoRA — a pose skeleton, a depth pass, edges). With
+        ``image`` as the first frame it is motion transfer: the still says who
+        and where, the control video says how she moves. ``lora`` names the
+        control LoRA (a path or a Hugging Face repo id); left out, it is
+        Lightricks' union control.
 
         The mp4 comes back as the body, and ``X-Output-Path`` says where it
         also stays on disk — a four-second clip is a few MB, but a caller that
@@ -334,12 +393,14 @@ def create_app() -> FastAPI:
         try:
             image_path = await _spill(image, ".png")
             audio_path = await _spill(audio, ".wav")
+            control_path = await _spill(control, ".mp4")
 
             options = {
                 "frames": frames, "width": width, "height": height, "seed": seed,
                 "mode": mode, "steps": steps, "cfg_scale": cfg_scale,
                 "low_ram": low_ram, "enhance_prompt": enhance_prompt,
                 "image": image_path, "audio": audio_path,
+                "control": control_path, "control_strength": control_strength, "lora": lora,
             }
             options = {k: v for k, v in options.items() if v is not None}
 

@@ -63,6 +63,88 @@ class TestGenerateEndpoint:
         assert "No model loaded" in resp.json()["detail"]
 
 
+class TestImg2ImgEndpoint:
+    @staticmethod
+    def _png(colour):
+        import io
+        buf = io.BytesIO()
+        Image.new("RGB", (64, 48), colour).save(buf, format="PNG")
+        return buf.getvalue()
+
+    def _engine(self, mm):
+        engine = MagicMock()
+        engine.generate_image.return_value = Image.new("RGB", (64, 48), "white")
+        mm.is_model_loaded.return_value = True
+        mm.loaded_model = engine
+        return engine
+
+    def test_one_picture_forwards_no_list(self, client):
+        """The ordinary edit. A model that takes one picture must not be
+        handed an `images` keyword it has never heard of."""
+        tc, mm = client
+        engine = self._engine(mm)
+        resp = tc.post("/api/generate/img2img", data={"prompt": "make it night"},
+                       files={"image": ("a.png", self._png("red"), "image/png")})
+        assert resp.status_code == 200, resp.text
+        kwargs = engine.generate_image.call_args.kwargs
+        assert "images" not in kwargs
+        assert kwargs["image"].size == (64, 48)
+        assert (kwargs["width"], kwargs["height"]) == (64, 48)
+
+    def test_extra_references_arrive_in_order_after_the_first(self, client):
+        """Who from one picture, where from another: the first upload is
+        image 1 and sets the size, the extras follow in upload order."""
+        tc, mm = client
+        engine = self._engine(mm)
+        resp = tc.post(
+            "/api/generate/img2img", data={"prompt": "the woman from image 1 in the place from image 2"},
+            files=[("image", ("who.png", self._png("red"), "image/png")),
+                   ("images", ("where.png", self._png("green"), "image/png")),
+                   ("images", ("also.png", self._png("blue"), "image/png"))])
+        assert resp.status_code == 200, resp.text
+        kwargs = engine.generate_image.call_args.kwargs
+        colours = [ref.getpixel((0, 0)) for ref in kwargs["images"]]
+        assert colours == [(255, 0, 0), (0, 128, 0), (0, 0, 255)]
+        assert kwargs["image"].getpixel((0, 0)) == (255, 0, 0)
+
+
+class TestFaceCompareEndpoint:
+    @staticmethod
+    def _png(colour):
+        import io
+        buf = io.BytesIO()
+        Image.new("RGB", (64, 64), colour).save(buf, format="PNG")
+        return buf.getvalue()
+
+    def test_needs_no_model_and_answers_in_upload_order(self, client):
+        """Frames in, numbers out — from a server with no diffusion model
+        loaded, because this is not a diffusion model's question."""
+        tc, mm = client
+        mm.is_model_loaded.return_value = False
+        matcher = MagicMock()
+        matcher.compare.return_value = {"model": "sface", "results": [{"found": True, "similarity": 0.7}, {"found": False}]}
+        tc.app.state.face_matcher = matcher
+        resp = tc.post("/api/face/compare",
+                       files=[("anchor", ("her.png", self._png("red"), "image/png")),
+                              ("images", ("one.png", self._png("green"), "image/png")),
+                              ("images", ("two.png", self._png("blue"), "image/png"))])
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["results"] == [{"found": True, "similarity": 0.7}, {"found": False}]
+        who, pictures = matcher.compare.call_args.args
+        assert who.getpixel((0, 0)) == (255, 0, 0)
+        assert [p.getpixel((0, 0)) for p in pictures] == [(0, 128, 0), (0, 0, 255)]
+
+    def test_missing_models_say_how_to_get_them(self, client, tmp_path):
+        from ollamadiffuser.core.utils.face_match import FaceMatcher
+        tc, _ = client
+        tc.app.state.face_matcher = FaceMatcher(directory=tmp_path)      # an empty folder
+        resp = tc.post("/api/face/compare",
+                       files=[("anchor", ("her.png", self._png("red"), "image/png")),
+                              ("images", ("one.png", self._png("green"), "image/png"))])
+        assert resp.status_code == 503
+        assert "--download" in resp.json()["detail"] and "face_recognition_sface" in resp.json()["detail"]
+
+
 class TestVideoEndpoint:
     def test_text_to_video_needs_no_files(self, client, tmp_path):
         """The ordinary call — a prompt and nothing else — must reach the engine.

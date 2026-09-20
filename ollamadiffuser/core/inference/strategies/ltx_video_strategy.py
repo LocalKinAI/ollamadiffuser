@@ -67,7 +67,21 @@ ARGV_OPTIONS = frozenset({
     "cfg_scale", "stg_scale", "stage1_steps", "stage2_steps",
     "image", "audio", "frame_rate", "audio_start", "auto_duration",
     "enhance_prompt", "low_ram", "tile_frames", "tile_spatial", "quiet",
+    "control", "control_strength", "lora", "lora_strength",
 })
+
+# The control LoRA a caller gets when it names none: Lightricks' union control
+# (canny + depth + pose) for LTX-2.3. A local copy is preferred to the repo id
+# — the CLI resolves a repo id through the hub, and the hub is what the
+# offline-first run below exists to keep out of the way.
+UNION_CONTROL = "Lightricks/LTX-2.3-22b-IC-LoRA-Union-Control"
+UNION_CONTROL_FILE = "ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors"
+
+
+def default_control_lora() -> str:
+    from ...config.settings import settings
+    local = Path(settings.models_dir) / "ltx-loras" / UNION_CONTROL_FILE
+    return str(local) if local.exists() else UNION_CONTROL
 
 # The registry's shared vocabulary, in video terms. An entry may write either.
 ARGV_ALIASES = {
@@ -181,6 +195,10 @@ def build_argv(
     tile_frames: Optional[int] = None,
     tile_spatial: Optional[int] = None,
     quiet: bool = True,
+    control: Optional[str] = None,
+    control_strength: float = 1.0,
+    lora: Optional[str] = None,
+    lora_strength: float = 1.0,
 ) -> list[str]:
     """The command line for one generation.
 
@@ -194,6 +212,13 @@ def build_argv(
     against the binary, not the README — argparse answers "unrecognized
     arguments" to all three). Everything else is ``generate``, where the mode
     is a flag and ``-f`` carries the length.
+
+    A ``control`` video picks ``ic-lora``: generation that follows a reference
+    video — a pose skeleton, a depth pass, canny edges — frame for frame. It is
+    how a movement a text prompt cannot describe gets made: the prompt says who
+    and where, the control video says how she moves, and ``image`` (pinned to
+    frame 0) says what she looks like. It has its own staging flags and takes
+    none of ``generate``'s mode flags.
     """
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}, got {mode!r}")
@@ -203,7 +228,16 @@ def build_argv(
             f"{frames} is not — nearest legal is {nearest_frame_count(frames)}"
         )
 
-    if audio:
+    if control and audio:
+        raise ValueError("a control video and an audio track pick different pipelines; give one")
+    if control:
+        argv = [binary, "ic-lora", "--prompt", prompt, "--output", output, "--model", pack,
+                "--lora", lora or default_control_lora(), str(lora_strength),
+                "--video-conditioning", control, str(control_strength)]
+        if frames is not None:
+            argv += ["--frames", str(frames)]
+        argv += ["--height", str(height), "--width", str(width)]
+    elif audio:
         argv = [binary, "a2v", "--audio", audio, "--output", output,
                 "--prompt", prompt, "--model", pack]
         # Length comes from the audio; a frame count is still allowed, and
@@ -238,7 +272,10 @@ def build_argv(
 
     # Mandatory, on both.
     argv += ["--frame-rate", str(frame_rate or TRAINED_FPS)]
-    if image:
+    if image and control:
+        # PATH FRAME_IDX STRENGTH: the still is the first frame, held fully.
+        argv += ["--image", image, "0", "1.0"]
+    elif image:
         argv += ["--image", image]
     if seed is not None:
         argv += ["--seed", str(seed)]
