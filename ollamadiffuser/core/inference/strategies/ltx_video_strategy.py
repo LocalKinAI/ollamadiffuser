@@ -377,7 +377,17 @@ class LTXVideoMLXStrategy(InferenceStrategy):
 
         argv = build_argv(self.binary, prompt, str(target), pack=self.pack, **options)
         logger.info("LTX-2: %s", " ".join(argv[1:]))
-        result = self._run(argv, timeout=timeout)
+        # Offline first. The CLI resolves its pack through the Hugging Face
+        # hub, which means a metadata request before every clip — for weights
+        # that have been on this disk for weeks. On a busy line that request
+        # is the whole wait (measured: a generate sat at 0% CPU for five
+        # minutes behind an unrelated download, then died with
+        # RemoteProtocolError), and with no line at all it is a local model
+        # that cannot run. Only a pack that really is incomplete needs the
+        # network, and that is the one case the second attempt is for.
+        result = self._run(argv, timeout=timeout, offline=True)
+        if result.returncode != 0 and _wants_network(result.stdout):
+            result = self._run(argv, timeout=timeout, offline=False)
         if result.returncode != 0:
             raise RuntimeError(
                 f"ltx-2-mlx failed ({result.returncode}): {_tail(result.stdout)}"
@@ -390,15 +400,32 @@ class LTXVideoMLXStrategy(InferenceStrategy):
         return target
 
     @staticmethod
-    def _run(argv: Sequence[str], timeout: Optional[float] = None):
+    def _run(argv: Sequence[str], timeout: Optional[float] = None, offline: bool = False):
         """Run the CLI, keeping its output. Generations take minutes."""
+        env = dict(os.environ)
+        if offline:
+            env["HF_HUB_OFFLINE"] = "1"
+        else:
+            env.pop("HF_HUB_OFFLINE", None)
         return subprocess.run(
             list(argv),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             timeout=timeout,
+            env=env,
         )
+
+
+def _wants_network(output: Optional[str]) -> bool:
+    """True when an offline run failed because something is not on disk —
+    as opposed to failing for a reason the network would not fix."""
+    text = (output or "").lower()
+    return any(marker in text for marker in (
+        "hf_hub_offline", "offline mode", "outgoing traffic has been disabled",
+        "localentrynotfounderror", "cannot find the requested files",
+        "couldn't find", "not found in the local cache", "local_files_only",
+    ))
 
 
 def _tail(output: Optional[str], lines: int = 3) -> str:

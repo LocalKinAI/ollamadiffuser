@@ -335,7 +335,7 @@ class TestStrategy:
             returncode = 0
             stdout = "done"
 
-        def _fake_run(argv, timeout=None):
+        def _fake_run(argv, timeout=None, offline=False):
             seen["argv"] = list(argv)
             out.write_bytes(b"mp4")
             return _Result()
@@ -373,7 +373,7 @@ class TestStrategy:
             returncode = 0
             stdout = "done"
 
-        def _fake_run(argv, timeout=None):
+        def _fake_run(argv, timeout=None, offline=False):
             seen["argv"] = list(argv)
             out.write_bytes(b"mp4")
             return _Result()
@@ -401,7 +401,7 @@ class TestStrategy:
             stdout = "loading pack\rout of memory"
 
         monkeypatch.setattr(LTXVideoMLXStrategy, "_run",
-                            staticmethod(lambda argv, timeout=None: _Result()))
+                            staticmethod(lambda argv, timeout=None, offline=False: _Result()))
         with pytest.raises(RuntimeError, match="out of memory"):
             s.generate_video("a cat", output=str(tmp_path / "x.mp4"), frames=97)
 
@@ -571,3 +571,49 @@ class TestPatternsMatchTheMode:
             expected = 1 if cfg["parameters"]["mode"] == "distilled" else 2
             assert len(transformers) == expected, \
                 f"{name}: fetches {sorted(transformers)}"
+
+
+class TestOfflineFirst:
+    """A local model must not need the internet.
+
+    The CLI resolves its pack through the hub, which is a network request
+    before every clip. Measured on the box: with the line saturated by an
+    unrelated download, a generate sat at 0% CPU for five minutes and then
+    died with httpx.RemoteProtocolError — for weights that were on disk.
+    """
+
+    def _result(self, code, output=""):
+        import subprocess
+        return subprocess.CompletedProcess(args=[], returncode=code, stdout=output)
+
+    def test_the_subprocess_is_told_to_stay_offline(self, monkeypatch):
+        from ollamadiffuser.core.inference.strategies import ltx_video_strategy as mod
+        seen = {}
+
+        def fake_run(argv, **kwargs):
+            seen.update(kwargs)
+            return self._result(0)
+
+        monkeypatch.setattr(mod.subprocess, "run", fake_run)
+        mod.LTXVideoMLXStrategy._run(["ltx-2-mlx"], offline=True)
+        assert seen["env"]["HF_HUB_OFFLINE"] == "1"
+
+    def test_online_run_clears_an_inherited_offline_flag(self, monkeypatch):
+        from ollamadiffuser.core.inference.strategies import ltx_video_strategy as mod
+        seen = {}
+        monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+        monkeypatch.setattr(mod.subprocess, "run", lambda argv, **kw: seen.update(kw) or self._result(0))
+        mod.LTXVideoMLXStrategy._run(["ltx-2-mlx"], offline=False)
+        assert "HF_HUB_OFFLINE" not in seen["env"]
+
+    @pytest.mark.parametrize("output,wants", [
+        ("huggingface_hub.errors.LocalEntryNotFoundError: Cannot find the requested files", True),
+        ("outgoing traffic has been disabled. To enable hf.co look-ups, set HF_HUB_OFFLINE=0", True),
+        ("RuntimeError: [metal] out of memory", False),
+        ("ValueError: frames must be 8k+1", False),
+        ("", False),
+        (None, False),
+    ])
+    def test_only_a_missing_file_earns_a_second_run_online(self, output, wants):
+        from ollamadiffuser.core.inference.strategies.ltx_video_strategy import _wants_network
+        assert _wants_network(output) is wants

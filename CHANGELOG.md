@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### 🔌 A local video model runs without the internet
+
+- **`ltx-2-mlx` is run offline first.** The CLI resolves its pack through the
+  Hugging Face hub, which means a metadata request before every clip — for
+  weights that have been on the disk for weeks. Measured on the box: with the
+  line saturated by an unrelated 56 GB pull, a generate sat at **0% CPU with
+  0.1 GB resident for five minutes**, never having loaded the model, holding
+  one HTTPS connection to the hub's CDN, and then died with
+  `httpx.RemoteProtocolError`. With no line at all it was a local model that
+  could not run. The subprocess now gets `HF_HUB_OFFLINE=1`; only when that
+  run fails *because something is not on disk* (`LocalEntryNotFoundError`
+  and friends) is it run once more with the network — which is the first use
+  of a pack that still has a text encoder to fetch. Checked the hard way:
+  the same download restarted, the same shot re-filmed during it — 93% CPU
+  at 38 seconds, clip out in the usual ~85 s.
+- A server started over a non-interactive ssh session does not have
+  `/opt/homebrew/bin` on its `PATH`, and `ltx-video-mlx` refuses to load
+  without `ffmpeg` — start it with the path set.
+
 ## [2.0.26] - 2026-09-19
 
 ### 🧾 The registry pulls what the loader loads
