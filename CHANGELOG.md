@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🖼️ Qwen-Image-2.1, through mflux
+
+- **`qwen-image-2.1-mlx`** — Qwen's September 2026 model, on Apple Silicon.
+  It is a new architecture (Qwen3-VL-8B text encoder, new VAE), not another
+  `qwen-image` checkpoint, so it gets its own mflux family: **`qwen21`**, which
+  first appears in **mflux 0.20.0**. The `mflux` floor moves from 0.19.0 to
+  0.20.0 in `pyproject.toml`, `install.sh` and `ollamadiffuser enable mlx`.
+- Routing is one line in `_ALIAS_ROUTED`: `QwenImage21` takes
+  `(quantize=..., model_config=...)` like the other alias-routed families,
+  and `repo_id` matches what mflux's `qwen-image-2.1` alias resolves to
+  (`TestRegistryPullsWhatMfluxLoads` checks it).
+- **Measured on an M3 Ultra (96 GB)**, 1024×1024, 25 steps, run through
+  `InferenceEngine` → `MLXStrategy` → mflux with the downloaded repo as
+  `model_path`: 108 s per image (104–112 s calling mflux directly), 45.8 GB
+  peak. The same prompt and seed in ComfyUI 0.37 with the `int8_convrot`
+  checkpoint took 126–134 s. Chinese signage renders correctly.
+- **4-bit is not worth offering**: it measured the same 45.8 GB peak and the
+  same speed as 8-bit, so there is one entry, at `quantize: 8`.
+- `guidance_scale: 1.0` is deliberate. mflux runs true CFG only when guidance
+  is above 1 *and* a negative prompt is given — and the engine always sends
+  one — so raising it doubles the time per step. The end-to-end run above
+  used the engine's default negative prompt and stayed at 108 s.
+- Licence: **Qwen Research License — research and evaluation only, no
+  commercial use.** `license_info` says so.
+
 ### 🕺 A video that follows another video
 
 - **`control` on `/api/generate/video`** (and `control=` on `generate_video`) —

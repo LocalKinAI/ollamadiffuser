@@ -46,7 +46,7 @@ def _build_enable_command(backend: str):
                 "Use the default PyTorch path, or 'enable gguf' for low-VRAM."
             )
         return (
-            [sys.executable, "-m", "pip", "install", "mflux>=0.19.0"],
+            [sys.executable, "-m", "pip", "install", "mflux>=0.20.0"],
             None,
             "Apple Silicon native inference — typically 2-3x faster than PyTorch+MPS.",
         )

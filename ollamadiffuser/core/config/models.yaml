@@ -387,6 +387,38 @@ models:
       type: Apache 2.0
       requires_agreement: false
       commercial_use: true
+  qwen-image-2.1-mlx:
+    # A new architecture (Qwen3-VL-8B text encoder, new VAE), not another
+    # qwen-image checkpoint — hence its own mflux family, qwen21 (mflux 0.20.0+).
+    # The repo holds only what mflux reads (transformer, text_encoder, vae,
+    # processor), so no allow_patterns.
+    repo_id: Qwen/Qwen-Image-2.1
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: qwen21
+      mlx_model_name: qwen-image-2.1
+      quantize: 8
+      num_inference_steps: 25
+      # 1.0 keeps true CFG off: mflux only runs the negative branch when
+      # guidance > 1 AND a negative prompt is given, and the engine always
+      # sends one — so raising this doubles the time per step.
+      guidance_scale: 1.0
+    hardware_requirements:
+      min_vram_gb: 46
+      recommended_vram_gb: 64
+      min_ram_gb: 64
+      recommended_ram_gb: 96
+      disk_space_gb: 34
+      supported_devices:
+      - MPS
+      performance_notes: 'Measured on an M3 Ultra (96 GB), 1024x1024, 25 steps: 104-112 s per
+        image, 45.8 GB peak. 4-bit quantization measured the same peak and the same speed, so
+        there is no reason to use it. Renders Chinese text correctly.'
+    license_info:
+      type: Qwen Research License (non-commercial)
+      requires_agreement: false
+      commercial_use: false
   qwen-image-edit-mlx:
     # Same story: mflux's `qwen-image-edit` alias is the 2509 checkpoint.
     repo_id: Qwen/Qwen-Image-Edit-2509

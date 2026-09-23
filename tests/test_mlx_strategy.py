@@ -135,13 +135,13 @@ class TestDispatch:
 
     def test_supported_variants_constant(self):
         # Phase 1 + 2 + 2.5 (the FLUX/Z-Image/Qwen families), plus the eight
-        # families mflux added after them, plus FLUX.2's editor — eighteen.
+        # families mflux added after them, plus FLUX.2's editor, plus Qwen-Image-2.1 — nineteen.
         assert SUPPORTED_MLX_VARIANTS == frozenset({
             "flux1", "flux1-kontext",
             "flux1-fill", "flux1-redux", "flux1-depth", "flux1-controlnet",
             "flux2", "flux2-edit", "z_image", "qwen-image",
             "krea2", "boogu", "ernie-image", "lens", "ideogram4",
-            "fibo", "fibo-edit", "seedvr2",
+            "fibo", "fibo-edit", "seedvr2", "qwen21",
         })
 
     def test_flux2_edit_does_not_demand_an_image_here(self):
@@ -287,6 +287,7 @@ class TestVariantResolution:
         ("fibo",        "fibo",               "FIBO"),
         ("fibo-edit",   "fibo-edit",          "FIBOEdit"),
         ("seedvr2",     "seedvr2-3b",         "SeedVR2"),
+        ("qwen21",      "qwen-image-2.1",     "QwenImage21"),
     ])
     def test_alias_routed_family_resolves(self, variant, alias, expected):
         cls, config = MLXStrategy._resolve_model_and_config(variant, alias)

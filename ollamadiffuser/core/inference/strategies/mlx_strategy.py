@@ -72,6 +72,7 @@ SUPPORTED_MLX_VARIANTS = frozenset({
     "fibo",              # FIBO / FIBO-lite (JSON prompts)
     "fibo-edit",         # FIBO-Edit / -rmbg (instruction editing)
     "seedvr2",           # SeedVR2 3B / 7B (upscaling)
+    "qwen21",            # Qwen-Image-2.1 (mflux 0.20.0+; a new architecture, not a qwen-image checkpoint)
 })
 
 # Families whose mflux config comes straight from the alias: variant →
@@ -88,6 +89,7 @@ _ALIAS_ROUTED = {
     "fibo":        ("mflux.models.fibo.variants.txt2img.fibo", "FIBO"),
     "fibo-edit":   ("mflux.models.fibo.variants.edit.fibo_edit", "FIBOEdit"),
     "seedvr2":     ("mflux.models.seedvr2.variants.upscale.seedvr2", "SeedVR2"),
+    "qwen21":      ("mflux.models.qwen21.variants.txt2img.qwen_image_21", "QwenImage21"),
 }
 
 # Per-variant required-input kwargs (passed to ``generate()``). If any

@@ -6,6 +6,10 @@
 
 ## 🆕 What's New
 
+### Unreleased — Qwen-Image-2.1 on Apple Silicon
+
+`qwen-image-2.1-mlx` runs Qwen's new model through mflux 0.20.0 (now the minimum mflux). On an M3 Ultra: **108 s per 1024² image at 25 steps, 45.8 GB peak** — faster than the same prompt in ComfyUI (126–134 s), with Chinese text rendered correctly. It needs a 64 GB+ Mac, and its licence is **research / non-commercial only**.
+
 ### v2.0.26 — the registry pulls what the loader loads
 
 `qwen-image-mlx` / `qwen-image-edit-mlx` were pulling 58 GB of a checkpoint mflux never loads (now `Qwen-Image-2512` / `Qwen-Image-Edit-2509`), and `seedvr2-3b-mlx` fetched a 3.4 GB fp8 file it never opened. `ollamadiffuser enable gguf` now builds with CUDA on NVIDIA machines instead of silently producing a CPU build. New: [CONTRIBUTING.md](CONTRIBUTING.md) — adding a model is a data-only PR.
@@ -135,7 +139,7 @@ Most models work **without any token** -- just install and go. See [Hugging Face
 - **🔄 LoRA Integration**: Dynamic LoRA loading and management
 - **🔌 MCP & OpenClaw**: Model Context Protocol server for AI assistant integration (OpenClaw, Claude Code, Cursor)
 - **🍎 Apple Silicon, two paths**:
-  - **MLX backend** via [mflux](https://github.com/filipstrand/mflux) — 22 native MLX entries (FLUX.1 family, FLUX.2 Klein, Z-Image, Qwen-Image, Kontext, Fill, Redux, Depth, ControlNet, and since v2.0.21 Krea 2, Boogu, ERNIE-Image, Lens, Ideogram 4, FIBO, FIBO-Edit, SeedVR2). Typically **2-3× faster** than the PyTorch + MPS path on M-series.
+  - **MLX backend** via [mflux](https://github.com/filipstrand/mflux) — 23 native MLX entries (FLUX.1 family, FLUX.2 Klein, Z-Image, Qwen-Image, Kontext, Fill, Redux, Depth, ControlNet, and since v2.0.21 Krea 2, Boogu, ERNIE-Image, Lens, Ideogram 4, FIBO, FIBO-Edit, SeedVR2). Typically **2-3× faster** than the PyTorch + MPS path on M-series.
   - **PyTorch + MPS** — full diffusers pipeline support with per-model dtype handling (float16/bfloat16, NaN sanitization), GGUF Metal acceleration, and `ollamadiffuser recommend` for hardware-aware model suggestions.
 - **📦 Smart Downloads**: `ollamadiffuser pull` downloads only diffusers pipeline files — skips root-level checkpoints, ONNX/Flax exports, and safety_checker. Saves 10–200 GB per model.
 - **📦 GGUF Support**: Memory-efficient quantized models (3GB VRAM minimum!) with CUDA and Metal acceleration
@@ -385,6 +389,7 @@ MLX entries run through [mflux](https://github.com/filipstrand/mflux) on Apple S
 | `flux.2-klein-9b-mlx` | FLUX.2 Klein | Q8 | 13 GB | 20 GB | Apache 2.0 |
 | `z-image-turbo-mlx` | Z-Image (6B, 8-step DMD) | Q8 | 8 GB | 12 GB (**M4 16GB**) | Apache 2.0 |
 | `qwen-image-mlx` | Qwen-Image (20B) | Q8 | 22 GB | 24 GB | Apache 2.0 |
+| `qwen-image-2.1-mlx` | Qwen-Image-2.1 (mflux 0.20+) | Q8 | 34 GB | 64 GB (measured 45.8 GB peak) | Qwen Research (non-commercial) |
 | `boogu-image-turbo-mlx` | Boogu Image (10B, 4-step DMD) | Q8 | 12 GB | 16 GB | Apache 2.0 |
 | `ernie-image-turbo-mlx` | ERNIE-Image (8B, 8-step) | Q8 | 10 GB | 14 GB | Apache 2.0 |
 | `krea-2-turbo-mlx` | Krea 2 (12B, 8-step) | Q8 | 14 GB | 20 GB | Krea 2 Community (gated) |
