@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🎬 Video on NVIDIA, through diffusers
+
+- **New `diffusers-video` model type** (`DiffusersVideoStrategy`): Wan and
+  LTX-2 through diffusers' own pipelines, for every machine that is not a
+  Mac — video had been Apple-Silicon-only, through ltx-2-mlx. It sits behind
+  the same `generate_video()` / `POST /api/generate/video` and returns the
+  same mp4 path: `frames` or `seconds` (rounded to the model's `4k+1` or
+  `8k+1` grid), `width`, `height`, `steps`, `cfg_scale`, `seed`, and `image`
+  for the first frame through the entry's image-to-video pipeline, built with
+  `from_pipe` so it shares the loaded weights. `audio`, `control` and `lora`
+  are ltx-2-mlx features and are refused rather than silently dropped.
+- Entries: `wan2.1-t2v-1.3b` (text-to-video, 480P, 8 GB+), `wan2.2-ti2v-5b`
+  (text- and image-to-video, 1280×704 at 24 fps), `ltx-2.3-distilled`
+  (diffusers/LTX-2.3-Distilled-Diffusers: 8 steps, guidance 1.0 and the fixed
+  distilled sigma schedule its card requires, with its soundtrack muxed into
+  the mp4). CUDA with model CPU offload; the VAE is tiled, and Wan's VAE is
+  kept in fp32 as its example does.
+- New dependencies, both prebuilt wheels: `av` (PyAV) writes the H.264/AAC
+  mp4 through `diffusers.utils.encode_video`; `ftfy`, because diffusers
+  0.40's `WanImageToVideoPipeline` calls `ftfy.fix_text` without checking it
+  is installed and fails every image-to-video call with a NameError.
+- **Run for real on the box** with diffusers 0.40 and two tiny random test
+  pipelines (so the pixels are noise, the plumbing is not): Wan text-to-video
+  wrote an H.264 mp4; LTX-2.3 distilled wrote H.264 + AAC (48 kHz) for both
+  text- and image-to-video on CPU. On the Apple GPU, diffusers' LTX-2 dies on
+  a float64 tensor Metal cannot hold, so the LTX-2 diffusers entries refuse
+  `mps` at load and point to the `ltx-*-mlx` entries. Not run: Wan 2.2's
+  image-to-video (no tiny TI2V model exists) and all three full models, which
+  are CUDA entries.
+
 ### 🎛️ LoRAs on Apple Silicon
 
 - **`load_lora_runtime` works on MLX models.** It used to log "not supported"

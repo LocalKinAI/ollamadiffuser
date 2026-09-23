@@ -2689,3 +2689,102 @@ models:
       type: LTX-2 Community License
       requires_agreement: true
       commercial_use: false
+  wan2.2-ti2v-5b:
+    repo_id: Wan-AI/Wan2.2-TI2V-5B-Diffusers
+    model_type: diffusers-video
+    variant: bf16
+    parameters:
+      pipeline_class: WanPipeline
+      # Same weights, image-to-video: pass image= for the first frame.
+      i2v_pipeline_class: WanImageToVideoPipeline
+      frame_multiple: 4
+      frame_rate: 24
+      num_frames: 121
+      # The card's 720P for this model is 1280x704, not 1280x720.
+      width: 1280
+      height: 704
+      num_inference_steps: 50
+      guidance_scale: 5.0
+      torch_dtype: bfloat16
+      vae_dtype: float32
+      enable_cpu_offload: true
+    hardware_requirements:
+      min_vram_gb: 24
+      recommended_vram_gb: 32
+      min_ram_gb: 32
+      recommended_ram_gb: 64
+      disk_space_gb: 35
+      supported_devices:
+      - CUDA
+      performance_notes: Wan 2.2 TI2V-5B through diffusers, text- and image-to-video at 720P (1280x704),
+        24 fps, 5 s by default. Its card says it runs on one RTX 4090. The Apple Silicon video path is the
+        ltx-2.*-mlx entries. Apache 2.0.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  wan2.1-t2v-1.3b:
+    repo_id: Wan-AI/Wan2.1-T2V-1.3B-Diffusers
+    model_type: diffusers-video
+    variant: bf16
+    parameters:
+      pipeline_class: WanPipeline
+      frame_multiple: 4
+      frame_rate: 16
+      num_frames: 81
+      width: 832
+      height: 480
+      num_inference_steps: 50
+      guidance_scale: 5.0
+      torch_dtype: bfloat16
+      vae_dtype: float32
+      enable_cpu_offload: true
+    hardware_requirements:
+      min_vram_gb: 8
+      recommended_vram_gb: 12
+      min_ram_gb: 16
+      recommended_ram_gb: 32
+      disk_space_gb: 29
+      supported_devices:
+      - CUDA
+      performance_notes: Wan 2.1 T2V-1.3B through diffusers, text-to-video at 480P, 16 fps, 5 s by default.
+        The small one — its card gives 8.19 GB of VRAM and about 4 minutes per 5 s clip on an RTX 4090.
+        Most of the download is the 22.7 GB UMT5 text encoder. Apache 2.0.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  ltx-2.3-distilled:
+    repo_id: diffusers/LTX-2.3-Distilled-Diffusers
+    model_type: diffusers-video
+    variant: bf16
+    parameters:
+      pipeline_class: LTX2Pipeline
+      i2v_pipeline_class: LTX2ImageToVideoPipeline
+      frame_multiple: 8
+      frame_rate: 24
+      num_frames: 121
+      width: 768
+      height: 512
+      # The card: always 8 steps, guidance 1.0 and the fixed distilled
+      # sigma schedule, which the strategy passes when it sees this.
+      num_inference_steps: 8
+      guidance_scale: 1.0
+      sigmas: ltx2-distilled
+      torch_dtype: bfloat16
+      enable_cpu_offload: true
+    hardware_requirements:
+      min_vram_gb: 24
+      recommended_vram_gb: 48
+      min_ram_gb: 64
+      recommended_ram_gb: 128
+      disk_space_gb: 95
+      supported_devices:
+      - CUDA
+      performance_notes: LTX-2.3 (distilled) through diffusers — video with its own soundtrack, written
+        into the mp4, in 8 steps; text- or image-to-video. A 95 GB download, half of it the text encoder.
+        On Apple Silicon use the ltx-2.3-mlx-* entries instead.
+    license_info:
+      type: LTX-2 Community License
+      requires_agreement: false
+      commercial_use: false

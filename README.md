@@ -16,6 +16,8 @@ Eight more models, all registry entries with no new code. **Through mflux:** the
 
 **The same models on NVIDIA.** Recent additions had been Mac-only where diffusers could run them too. They now have diffusers entries: `z-image`, `flux.2-klein-base-4b`, `flux.2-klein-9b`, `ernie-image`, `ernie-image-turbo`, `krea-2-turbo`, `krea-2-raw`, `qwen-image` (2512) and `flux.1-krea-dev`. Also new: `z-anime` / `z-anime-mlx` (a full anime fine-tune of Z-Image), `seedvr2-7b-mlx`, `z-image-turbo-controlnet-mlx` (one ControlNet for canny, depth, pose, HED and MLSD), and style or motion LoRAs on LTX video.
 
+**Video on NVIDIA.** Video used to be Apple-Silicon-only (LTX-2 through ltx-2-mlx). A new `diffusers-video` path runs `wan2.1-t2v-1.3b`, `wan2.2-ti2v-5b` and `ltx-2.3-distilled` (with its soundtrack) through diffusers, behind the same `/api/generate/video`.
+
 **Licence correction:** `flux.2-klein-9b-mlx` was listed as Apache 2.0. FLUX.2 klein 9B is under the FLUX Non-Commercial License; only the 4B is Apache 2.0.
 
 ### v2.0.26 — the registry pulls what the loader loads
@@ -483,6 +485,21 @@ curl -X POST http://localhost:8000/api/generate/video \
 Video models refuse the image endpoints rather than returning one frame of the clip, and
 `/api/generate/video` answers 400 (not 500) for the things a caller can fix: no model loaded, an image
 model loaded, ltx-2-mlx not installed, a frame count off the grid.
+
+### 🎬 Video on NVIDIA — Wan and LTX-2 through diffusers
+
+Off Apple Silicon, video goes through diffusers' own pipelines (`model_type: diffusers-video`).
+Same endpoint and the same mp4 back: `POST /api/generate/video` with a prompt, and optionally
+`image` (first frame), `frames` or `seconds`, `width`, `height`, `steps`, `cfg_scale`, `seed`.
+
+| Entry | Model | Text / image to video | Default | Disk | VRAM | License |
+|---|---|---|---|---|---|---|
+| `wan2.1-t2v-1.3b` | Wan 2.1 T2V 1.3B | text | 480P, 16 fps, 5 s | 29 GB | 8 GB+ | Apache 2.0 |
+| `wan2.2-ti2v-5b` | Wan 2.2 TI2V 5B | both | 720P (1280×704), 24 fps, 5 s | 35 GB | 24 GB+ | Apache 2.0 |
+| `ltx-2.3-distilled` | LTX-2.3 distilled, **with sound** | both | 768×512, 24 fps, 8 steps | 95 GB | 24 GB+ (offload) | LTX-2 Community |
+
+LTX-2 writes its soundtrack into the mp4. The LTX-2 diffusers entries refuse the Apple GPU —
+diffusers' LTX-2 uses float64, which Metal lacks — and point to the `ltx-*-mlx` entries instead.
 
 **Hardware fit at a glance:**
 - **Mac Mini M4 16 GB** can run anything marked ✅ above (Q4 FLUX.1-schnell, FLUX.2 Klein 4B, Z-Image-Turbo).

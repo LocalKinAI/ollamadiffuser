@@ -54,6 +54,10 @@ def _get_strategy(model_type: str) -> InferenceStrategy:
         # LTX-2 video on Apple Silicon, through the ltx-2-mlx CLI.
         from .strategies.ltx_video_strategy import LTXVideoMLXStrategy
         return LTXVideoMLXStrategy()
+    elif model_type == "diffusers-video":
+        # Wan and LTX-2 through diffusers — the video path off Apple Silicon.
+        from .strategies.diffusers_video_strategy import DiffusersVideoStrategy
+        return DiffusersVideoStrategy()
     else:
         raise ValueError(f"Unsupported model type: {model_type}")
 
@@ -224,8 +228,9 @@ class InferenceEngine:
         if not hasattr(self._strategy, "generate_video"):
             name = getattr(self.model_config, "name", "this model")
             raise RuntimeError(
-                f"{name} is not a video model — load one of the ltx-video-mlx "
-                f"entries (see `ollamadiffuser list`) to generate video."
+                f"{name} is not a video model — load a video entry (model type "
+                f"ltx-video-mlx on Apple Silicon, diffusers-video elsewhere; see "
+                f"`ollamadiffuser registry list`) to generate video."
             )
         return self._strategy.generate_video(
             prompt=prompt, output=output, seconds=seconds, **kwargs

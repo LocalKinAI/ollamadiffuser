@@ -69,6 +69,12 @@ dependencies = [
     "numpy>=1.26.0",
     "controlnet-aux>=0.0.7",
     "opencv-python>=4.8.0",
+    # Writes the mp4 for diffusers video models, with LTX-2's soundtrack.
+    # Prebuilt wheels on every platform, FFmpeg bundled: still compile-free.
+    "av>=12.0.0",
+    # diffusers' WanImageToVideoPipeline calls ftfy.fix_text without checking
+    # it is installed (0.40: NameError on every image-to-video call).
+    "ftfy>=6.0.0",
     "requests>=2.28.0",
     "PyYAML>=6.0",
 ]
