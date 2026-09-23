@@ -12,6 +12,12 @@
 
 Eight more models, all registry entries with no new code. **Through mflux:** the undistilled bases of models already here — `z-image-mlx`, `flux.2-klein-base-4b-mlx`, `ernie-image-mlx`, `krea-2-raw-mlx` — for varied output, working negative prompts and LoRA training; `flux.1-krea-dev-mlx`; and `flux.2-klein-9b-kv-edit-mlx`, a multi-reference editor that caches its references. **Through diffusers:** `qwen-image-edit-2511`, the current Qwen edit model (it can't go through mflux, which doesn't read 2511's `zero_cond_t` flag), and `realvisxl-v5`. `pull` also stops fetching weights mflux never loads: `krea-2-turbo-mlx` drops from 62 to 36 GB, `ernie-image-turbo-mlx` from 32 to 24 GB.
 
+**LoRAs now load on Apple Silicon.** `ollamadiffuser lora load` used to refuse every MLX model; it now rebuilds the model with the LoRA baked in, for every mflux family that takes one — FLUX.1, Kontext, FLUX.2 klein, Z-Image, Qwen-Image, Krea 2, ERNIE. LoRAs stack, so a speed LoRA and a style LoRA go on together. Measured on an M3 Ultra with a klein-4B pixel-art LoRA: the edit changes visibly, and after `lora unload` the output is identical to the run before it.
+
+**The same models on NVIDIA.** Recent additions had been Mac-only where diffusers could run them too. They now have diffusers entries: `z-image`, `flux.2-klein-base-4b`, `flux.2-klein-9b`, `ernie-image`, `ernie-image-turbo`, `krea-2-turbo`, `krea-2-raw`, `qwen-image` (2512) and `flux.1-krea-dev`. Also new: `z-anime` / `z-anime-mlx` (a full anime fine-tune of Z-Image), `seedvr2-7b-mlx`, `z-image-turbo-controlnet-mlx` (one ControlNet for canny, depth, pose, HED and MLSD), and style or motion LoRAs on LTX video.
+
+**Licence correction:** `flux.2-klein-9b-mlx` was listed as Apache 2.0. FLUX.2 klein 9B is under the FLUX Non-Commercial License; only the 4B is Apache 2.0.
+
 ### v2.0.26 — the registry pulls what the loader loads
 
 `qwen-image-mlx` / `qwen-image-edit-mlx` were pulling 58 GB of a checkpoint mflux never loads (now `Qwen-Image-2512` / `Qwen-Image-Edit-2509`), and `seedvr2-3b-mlx` fetched a 3.4 GB fp8 file it never opened. `ollamadiffuser enable gguf` now builds with CUDA on NVIDIA machines instead of silently producing a CPU build. New: [CONTRIBUTING.md](CONTRIBUTING.md) — adding a model is a data-only PR.
@@ -141,7 +147,7 @@ Most models work **without any token** -- just install and go. See [Hugging Face
 - **🔄 LoRA Integration**: Dynamic LoRA loading and management
 - **🔌 MCP & OpenClaw**: Model Context Protocol server for AI assistant integration (OpenClaw, Claude Code, Cursor)
 - **🍎 Apple Silicon, two paths**:
-  - **MLX backend** via [mflux](https://github.com/filipstrand/mflux) — 30 native MLX entries (FLUX.1 family, FLUX.1 Krea, FLUX.2 Klein, Z-Image, Qwen-Image, Kontext, Fill, Redux, Depth, ControlNet, and since v2.0.21 Krea 2, Boogu, ERNIE-Image, Lens, Ideogram 4, FIBO, FIBO-Edit, SeedVR2). Typically **2-3× faster** than the PyTorch + MPS path on M-series.
+  - **MLX backend** via [mflux](https://github.com/filipstrand/mflux) — 33 native MLX entries (FLUX.1 family, FLUX.1 Krea, FLUX.2 Klein, Z-Image, Qwen-Image, Kontext, Fill, Redux, Depth, ControlNet, and since v2.0.21 Krea 2, Boogu, ERNIE-Image, Lens, Ideogram 4, FIBO, FIBO-Edit, SeedVR2). Typically **2-3× faster** than the PyTorch + MPS path on M-series.
   - **PyTorch + MPS** — full diffusers pipeline support with per-model dtype handling (float16/bfloat16, NaN sanitization), GGUF Metal acceleration, and `ollamadiffuser recommend` for hardware-aware model suggestions.
 - **📦 Smart Downloads**: `ollamadiffuser pull` downloads only diffusers pipeline files — skips root-level checkpoints, ONNX/Flax exports, and safety_checker. Saves 10–200 GB per model.
 - **♻️ Reuses what's already downloaded**: if a model is already in the Hugging Face cache (from ComfyUI, mflux, `hf download`…), `ollamadiffuser pull` hard-links it instead of downloading — seconds instead of tens of GB, and no second copy on disk.
@@ -314,6 +320,14 @@ Choose from 40+ models spanning every major architecture:
 | `flux.2-dev` | Black Forest Labs | 32B | 28 | 14GB+ | ❌ | Non-commercial |
 | `flux.2-klein-4b` | Black Forest Labs | 4B | 28 | 10GB+ | ✅ | Apache 2.0 |
 | `z-image-turbo` | Alibaba (Tongyi) | 6B | 8 | 10GB+ | ✅ | Apache 2.0 |
+| `z-image` | Alibaba (Tongyi) | 6B | 50 | 16GB+ | ✅ | Apache 2.0 |
+| `z-anime` | SeeSee21 (Z-Image fine-tune) | 6B | 40 | 16GB+ | ✅ | Apache 2.0 |
+| `flux.2-klein-base-4b` | Black Forest Labs | 4B | 50 | 10GB+ | ✅ | Apache 2.0 |
+| `flux.2-klein-9b` | Black Forest Labs | 9B | 4 | 20GB+ | ❌ | Non-commercial |
+| `flux.1-krea-dev` | Black Forest Labs × Krea | 12B | 28 | 20GB+ | ❌ | Non-commercial |
+| `krea-2-turbo` / `krea-2-raw` | Krea | 12B | 8 / 28 | 24GB+ | ❌ | Krea 2 Community |
+| `ernie-image-turbo` / `ernie-image` | Baidu | 8B | 8 / 50 | 20GB+ | ✅ | Apache 2.0 |
+| `qwen-image` | Alibaba (Qwen), 2512 | 20B | 50 | 24GB+ (offload) | ✅ | Apache 2.0 |
 | `sana-1.5` | NVIDIA | 1.6B | 20 | 8GB+ | ✅ | Apache 2.0 |
 | `cogview4` | Zhipu AI | 6B | 50 | 12GB+ | ✅ | Apache 2.0 |
 | `kolors` | Kuaishou | 8.6B | 50 | 8GB+ | ✅ | Kolors License |
@@ -391,11 +405,12 @@ MLX entries run through [mflux](https://github.com/filipstrand/mflux) on Apple S
 | `flux.1-schnell-mlx-q4` | FLUX.1 | Q4 | 8 GB | 12 GB (**M4 16GB**) | Apache 2.0 |
 | `flux.1-dev-mlx` | FLUX.1 | Q8 | 14 GB | 16 GB | Non-Commercial |
 | `flux.2-klein-4b-mlx` | FLUX.2 Klein | Q8 | 7 GB | 12 GB (**M4 16GB**) | Apache 2.0 |
-| `flux.2-klein-9b-mlx` | FLUX.2 Klein | Q8 | 13 GB | 20 GB | Apache 2.0 |
+| `flux.2-klein-9b-mlx` | FLUX.2 Klein | Q8 | 13 GB | 20 GB | Non-Commercial (gated) |
 | `flux.2-klein-base-4b-mlx` | FLUX.2 Klein base (undistilled, 50-step CFG) | Q8 | 7 GB | 12 GB | Apache 2.0 |
 | `flux.1-krea-dev-mlx` | FLUX.1 Krea (12B) | Q8 | 14 GB | 16 GB | Non-Commercial (gated) |
 | `z-image-turbo-mlx` | Z-Image (6B, 8-step DMD) | Q8 | 8 GB | 12 GB (**M4 16GB**) | Apache 2.0 |
 | `z-image-mlx` | Z-Image base (6B, 50-step CFG) | Q8 | 8 GB | 12 GB | Apache 2.0 |
+| `z-anime-mlx` | Z-Anime (anime fine-tune of Z-Image base) | Q8 | 8 GB | 12 GB | Apache 2.0 |
 | `qwen-image-mlx` | Qwen-Image (20B) | Q8 | 22 GB | 24 GB | Apache 2.0 |
 | `qwen-image-2.1-mlx` | Qwen-Image-2.1 (mflux 0.20+) | Q8 | 34 GB | 64 GB (measured 45.8 GB peak) | Qwen Research (non-commercial) |
 | `boogu-image-turbo-mlx` | Boogu Image (10B, 4-step DMD) | Q8 | 12 GB | 16 GB | Apache 2.0 |
@@ -421,6 +436,8 @@ MLX entries run through [mflux](https://github.com/filipstrand/mflux) on Apple S
 | `flux.2-klein-9b-kv-edit-mlx` | `image=` (one or more references) | Non-Commercial (gated) |
 | `fibo-edit-mlx` | `image=` | Bria (gated) |
 | `seedvr2-3b-mlx` | `image=` (upscales it) | Apache 2.0 |
+| `seedvr2-7b-mlx` | `image=` (upscales it) | Apache 2.0 |
+| `z-image-turbo-controlnet-mlx` | `control_image=`, `control_type=` (canny / depth / pose / hed / mlsd) | Apache 2.0 |
 
 ### 🎬 Video — LTX-2 on Apple Silicon
 
@@ -523,6 +540,26 @@ ollamadiffuser lora load ghibli --scale 1.2
 # Unload LoRA
 ollamadiffuser lora unload
 ```
+
+### LoRAs on Apple Silicon (MLX models)
+
+The same commands work on `-mlx` models. mflux takes a LoRA when the model is built, so loading
+or unloading one rebuilds the model with it baked in, and costs nothing per step afterwards.
+Measured on an M3 Ultra with FLUX.2 klein 4B: 45 s to load the LoRA the first time, most of it
+the 325 MB download; 0.3 s to unload it. LoRAs stack: load a speed LoRA and a style LoRA and
+both apply.
+
+```bash
+ollamadiffuser lora pull Limbicnation/pixel-art-lora -w pytorch_lora_weights.safetensors -a pixel
+ollamadiffuser lora load pixel --scale 1.0
+```
+
+Families that take LoRAs: FLUX.1 (and Kontext), FLUX.2 klein (and its edit variant), Z-Image,
+Qwen-Image, Krea 2, ERNIE-Image. Qwen-Image-2.1, Boogu, Lens, Ideogram 4, FIBO and SeedVR2 don't
+in mflux yet, and say so.
+
+On LTX video, pass `lora=` (a local `.safetensors` or a hub repo id) and `lora_strength=` to
+`/api/generate/video` for a style or motion LoRA; with a `control` video, `lora` is the IC-LoRA.
 
 ### Web UI LoRA Integration
 - **Easy Download**: Enter Hugging Face repository ID

@@ -219,6 +219,9 @@ def build_argv(
     and where, the control video says how she moves, and ``image`` (pinned to
     frame 0) says what she looks like. It has its own staging flags and takes
     none of ``generate``'s mode flags.
+
+    ``lora`` is the control LoRA under ``ic-lora`` and an ordinary style or
+    motion LoRA under ``generate``; ``a2v`` takes none.
     """
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}, got {mode!r}")
@@ -230,6 +233,10 @@ def build_argv(
 
     if control and audio:
         raise ValueError("a control video and an audio track pick different pipelines; give one")
+    if audio and lora:
+        # Checked against the binary: a2v has no --lora, and argparse would
+        # answer "unrecognized arguments" after the weights were read.
+        raise ValueError("audio-to-video takes no LoRA in ltx-2-mlx; drop lora or the audio")
     if control:
         argv = [binary, "ic-lora", "--prompt", prompt, "--output", output, "--model", pack,
                 "--lora", lora or default_control_lora(), str(lora_strength),
@@ -269,6 +276,11 @@ def build_argv(
             argv += ["--steps", str(steps)]
         if enhance_prompt:
             argv.append("--enhance-prompt")
+        # A style or motion LoRA — LTX-2.3's Transition LoRA, LTX-2.5's
+        # Cinemagraph — on plain generation. A local .safetensors or a hub
+        # repo id; ltx-2-mlx resolves either.
+        if lora:
+            argv += ["--lora", lora, str(lora_strength)]
 
     # Mandatory, on both.
     argv += ["--frame-rate", str(frame_rate or TRAINED_FPS)]

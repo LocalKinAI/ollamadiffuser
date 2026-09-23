@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🎛️ LoRAs on Apple Silicon
+
+- **`load_lora_runtime` works on MLX models.** It used to log "not supported"
+  and return False for every `-mlx` entry — the Mac path, where most of the
+  LoRAs people use (Lightning speed LoRAs, Qwen edit multi-angle, klein
+  consistency) would run. mflux takes `lora_paths` / `lora_scales` when a
+  model is built and bakes them into the weights, so loading or unloading a
+  LoRA now builds the model again from the same downloaded directory, with
+  the old weights released first so two copies never sit in memory.
+- **LoRAs stack**, as they do on the diffusers path: loading a second one
+  adds it, loading the same file again changes its scale, `unload` drops them
+  all. A LoRA that fails to map restores the model as it was and never falls
+  back to the hub, which would fetch the whole model again.
+- Families: FLUX.1 and Kontext, FLUX.2 klein and its edit variant, Z-Image,
+  Qwen-Image, Krea 2, ERNIE-Image. Qwen-Image-2.1, Boogu and SeedVR2 take no
+  LoRAs in mflux 0.20.0, and loading one says so.
+- `lora load` hands over the file `lora pull` downloaded rather than the hub
+  id, so neither backend fetches it a second time.
+- **Measured on the M3 Ultra**, `flux.2-klein-4b-edit-mlx` with
+  Limbicnation/pixel-art-lora (325 MB), one 768² edit per stage: 17.7 s
+  without the LoRA; 45.3 s to load it, most of it the download; 14.4 s with
+  it, and the picture visibly changes; 0.3 s to unload; 14.5 s after, with
+  output identical to the first run. Peak 16.9 GB.
+
+### 🖥️ The same models on NVIDIA
+
+- Recent entries had been Mac-only where diffusers 0.40 runs the model too.
+  New diffusers (`generic`) entries: `z-image`, `flux.2-klein-base-4b`,
+  `flux.2-klein-9b`, `ernie-image-turbo`, `ernie-image`, `krea-2-turbo`,
+  `krea-2-raw`, `qwen-image` (Qwen-Image-2512), and `flux.1-krea-dev` through
+  the FLUX strategy. Each has `allow_patterns` that skip the repo's root
+  single-file checkpoint, checked against the live file lists; the ERNIE
+  entries keep `pe/` because `ErnieImagePipeline` lists it as a component.
+  Settings are the model cards' or, for Krea 2, diffusers' own example.
+
+### ➕ More models
+
+- `z-anime-mlx` / `z-anime` — SeeSee21/Z-Anime, a full anime fine-tune of
+  Z-Image base (Apache 2.0). The repo is 202 GB of ComfyUI files around a
+  diffusers tree in `diffusers/`; a new `model_subdir` parameter, honoured by
+  the MLX and generic strategies, points the loader there, and `pull` takes
+  17.5 GB.
+- `seedvr2-7b-mlx` — mflux already ran it; the registry only had the 3B.
+- `z-image-turbo-controlnet-mlx` — Z-Image-Turbo with alibaba-pai's
+  ControlNet Union 2.1: one model for canny, depth, pose, HED and MLSD, picked
+  with a new `control_type` argument (also on `/api/generate/controlnet`).
+- **LTX video LoRAs**: `lora` / `lora_strength` now reach `ltx-2-mlx generate`,
+  for style and motion LoRAs; before, `lora` only applied with a control
+  video. `a2v` takes no LoRA in ltx-2-mlx and says so up front.
+- **Fixed**: MLX ControlNet entries were refused by `/api/generate/controlnet`
+  ("not a ControlNet model"), and the strength it sent
+  (`controlnet_conditioning_scale`) never reached mflux, which calls it
+  `controlnet_strength`.
+- **Fixed**: `flux.2-klein-9b-mlx` said Apache 2.0 and commercial use. FLUX.2
+  klein 9B is under the FLUX Non-Commercial License; only the 4B is Apache.
+- **Fixed**: `z-image-turbo-mlx` and `z-image-turbo` gave 8 and 14 GB of disk;
+  the repo's transformer is fp32 and a pull is 33 GB.
+
 ### ➕ Eight models, registry entries only
 
 - **Through mflux 0.20.0**, which already knew all six; each entry's

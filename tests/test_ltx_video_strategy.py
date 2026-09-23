@@ -573,6 +573,25 @@ class TestPatternsMatchTheMode:
                 f"{name}: fetches {sorted(transformers)}"
 
 
+class TestVideoLoRA:
+    """A style or motion LoRA on plain generation; a2v takes none."""
+
+    def test_generate_passes_the_lora_and_its_strength(self):
+        argv = ltx.build_argv("ltx", "a slow dissolve", "o.mp4", pack="/packs/q8", frames=121,
+                              lora="joyfox/LTX-2.3-Transition-LORA", lora_strength=0.8)
+        assert argv[1] == "generate"
+        at = argv.index("--lora")
+        assert argv[at:at + 3] == ["--lora", "joyfox/LTX-2.3-Transition-LORA", "0.8"]
+
+    def test_generate_without_a_lora_passes_none(self):
+        argv = ltx.build_argv("ltx", "p", "o.mp4", frames=121)
+        assert "--lora" not in argv
+
+    def test_audio_to_video_refuses_a_lora(self):
+        with pytest.raises(ValueError, match="takes no LoRA"):
+            ltx.build_argv("ltx", "p", "o.mp4", audio="song.wav", lora="x.safetensors")
+
+
 class TestControlVideo:
     """A control video picks `ic-lora`: motion from a reference, looks from a still."""
 

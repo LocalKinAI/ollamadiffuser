@@ -135,11 +135,12 @@ class TestDispatch:
 
     def test_supported_variants_constant(self):
         # Phase 1 + 2 + 2.5 (the FLUX/Z-Image/Qwen families), plus the eight
-        # families mflux added after them, plus FLUX.2's editor, plus Qwen-Image-2.1 — nineteen.
+        # families mflux added after them, plus FLUX.2's editor, plus Qwen-Image-2.1,
+        # plus Z-Image-Turbo's union ControlNet — twenty.
         assert SUPPORTED_MLX_VARIANTS == frozenset({
             "flux1", "flux1-kontext",
             "flux1-fill", "flux1-redux", "flux1-depth", "flux1-controlnet",
-            "flux2", "flux2-edit", "z_image", "qwen-image",
+            "flux2", "flux2-edit", "z_image", "z_image-controlnet", "qwen-image",
             "krea2", "boogu", "ernie-image", "lens", "ideogram4",
             "fibo", "fibo-edit", "seedvr2", "qwen21",
         })
@@ -601,24 +602,218 @@ class TestLoadAndGenerate:
 
 
 # --------------------------------------------------------------------------
-# Unsupported features (clear-error contract)
+# LoRA: mflux bakes LoRAs in when the model is built
 # --------------------------------------------------------------------------
 
-@pytest.mark.skipif(not is_apple_silicon(), reason="MLX only runs on Apple Silicon")
-class TestUnsupported:
-    def test_runtime_lora_returns_false_with_log(self, caplog):
-        cls_mock, _, mflux_config_mock = _stub_resolution()
-        s = MLXStrategy()
-        with patch.object(
-            MLXStrategy,
-            "_resolve_model_and_config",
-            return_value=(cls_mock, mflux_config_mock),
-        ):
-            s.load(_make_config(), device="mps")
-        with caplog.at_level("ERROR"):
-            assert s.load_lora_runtime("some/repo") is False
-        assert any("not supported" in r.message.lower() for r in caplog.records)
+class _FakeMflux:
+    """Stands in for an mflux class: records how each instance was built."""
+    built: list = []
+    fail_on: str = ""
 
+    def __init__(self, quantize=None, model_path=None, lora_paths=None,
+                 lora_scales=None, model_config=None):
+        if self.fail_on and any(self.fail_on in p for p in (lora_paths or [])):
+            raise ValueError("unmappable LoRA")
+        type(self).built.append({
+            "model_path": model_path,
+            "lora_paths": lora_paths,
+            "lora_scales": lora_scales,
+        })
+
+    def generate_image(self, seed, prompt, num_inference_steps=4, height=1024,
+                       width=1024, guidance=1.0):
+        return MagicMock(image=Image.new("RGB", (64, 64), color=(0, 128, 255)))
+
+
+class _FakeNoLora:
+    def __init__(self, quantize=None, model_path=None, model_config=None):
+        pass
+
+
+@pytest.fixture
+def lora_strategy(tmp_path):
+    """A loaded strategy over a real model directory, built by _FakeMflux."""
+    model_dir = tmp_path / "model"
+    (model_dir / "transformer").mkdir(parents=True)
+    (model_dir / "transformer" / "config.json").write_text("{}")
+    _FakeMflux.built = []
+    _FakeMflux.fail_on = ""
+    s = MLXStrategy()
+    with patch("ollamadiffuser.core.inference.strategies.mlx_strategy.is_apple_silicon",
+               return_value=True), \
+         patch.object(MLXStrategy, "_resolve_model_and_config",
+                      return_value=(_FakeMflux, MagicMock(name="mflux_config"))):
+        assert s.load(_make_config(path=str(model_dir)), device="mps")
+    return s, model_dir
+
+
+def _lora_file(tmp_path, name="style.safetensors"):
+    f = tmp_path / name
+    f.write_bytes(b"x")
+    return f
+
+
+class TestLoRA:
+    def test_loading_a_lora_rebuilds_with_it_baked_in(self, lora_strategy, tmp_path):
+        s, model_dir = lora_strategy
+        f = _lora_file(tmp_path)
+        assert s.load_lora_runtime(str(f), scale=0.8) is True
+        last = _FakeMflux.built[-1]
+        assert last["lora_paths"] == [str(f)]
+        assert last["lora_scales"] == [0.8]
+        # Still the downloaded weights, not a trip to the hub.
+        assert last["model_path"] == str(model_dir)
+        assert s.current_lora["stack"] == [{"path": str(f), "scale": 0.8}]
+        assert s.is_loaded
+
+    def test_loras_stack_and_reloading_one_changes_its_scale(self, lora_strategy, tmp_path):
+        s, _ = lora_strategy
+        speed, style = _lora_file(tmp_path, "speed.safetensors"), _lora_file(tmp_path)
+        s.load_lora_runtime(str(speed), scale=1.0)
+        s.load_lora_runtime(str(style), scale=0.7)
+        assert _FakeMflux.built[-1]["lora_paths"] == [str(speed), str(style)]
+        s.load_lora_runtime(str(speed), scale=0.5)
+        assert _FakeMflux.built[-1]["lora_paths"] == [str(style), str(speed)]
+        assert _FakeMflux.built[-1]["lora_scales"] == [0.7, 0.5]
+
+    def test_unload_builds_without_loras(self, lora_strategy, tmp_path):
+        s, _ = lora_strategy
+        s.load_lora_runtime(str(_lora_file(tmp_path)))
+        assert s.unload_lora() is True
+        assert _FakeMflux.built[-1]["lora_paths"] is None
+        assert s.current_lora is None
+        assert s.unload_lora() is False  # nothing left to drop
+
+    def test_directory_with_a_weight_name(self, lora_strategy, tmp_path):
+        s, _ = lora_strategy
+        d = tmp_path / "lora-dir"
+        d.mkdir()
+        (d / "a.safetensors").write_bytes(b"x")
+        (d / "b.safetensors").write_bytes(b"x")
+        assert s.load_lora_runtime(str(d), weight_name="b.safetensors")
+        assert _FakeMflux.built[-1]["lora_paths"] == [str(d / "b.safetensors")]
+
+    def test_ambiguous_directory_is_refused_without_a_rebuild(self, lora_strategy, tmp_path, caplog):
+        s, _ = lora_strategy
+        d = tmp_path / "lora-dir"
+        d.mkdir()
+        (d / "a.safetensors").write_bytes(b"x")
+        (d / "b.safetensors").write_bytes(b"x")
+        builds = len(_FakeMflux.built)
+        with caplog.at_level("ERROR"):
+            assert s.load_lora_runtime(str(d)) is False
+        assert len(_FakeMflux.built) == builds
+        assert any("weight_name" in r.message for r in caplog.records)
+
+    def test_hub_repo_is_passed_as_repo_colon_file(self, lora_strategy):
+        s, _ = lora_strategy
+        assert s.load_lora_runtime("lightx2v/Qwen-Image-Lightning",
+                                   weight_name="Qwen-Image-Lightning-8steps-V1.0-bf16.safetensors")
+        assert _FakeMflux.built[-1]["lora_paths"] == [
+            "lightx2v/Qwen-Image-Lightning:Qwen-Image-Lightning-8steps-V1.0-bf16.safetensors"
+        ]
+
+    def test_failed_lora_restores_the_previous_model_and_never_goes_to_the_hub(
+            self, lora_strategy, tmp_path):
+        s, model_dir = lora_strategy
+        good = _lora_file(tmp_path, "good.safetensors")
+        s.load_lora_runtime(str(good))
+        _FakeMflux.fail_on = "bad"
+        assert s.load_lora_runtime(str(_lora_file(tmp_path, "bad.safetensors"))) is False
+        # Every build used the downloaded weights; none fell back to the hub.
+        assert all(b["model_path"] == str(model_dir) for b in _FakeMflux.built)
+        assert _FakeMflux.built[-1]["lora_paths"] == [str(good)]
+        assert s.is_loaded
+
+    def test_family_without_loras_says_so(self, tmp_path, caplog):
+        s = MLXStrategy()
+        with patch("ollamadiffuser.core.inference.strategies.mlx_strategy.is_apple_silicon",
+                   return_value=True), \
+             patch.object(MLXStrategy, "_resolve_model_and_config",
+                          return_value=(_FakeNoLora, MagicMock())):
+            assert s.load(_make_config(), device="mps")
+        with caplog.at_level("ERROR"):
+            assert s.load_lora_runtime(str(_lora_file(tmp_path))) is False
+        assert any("takes no LoRAs" in r.message for r in caplog.records)
+
+    def test_model_subdir_points_the_build_at_the_subfolder(self, tmp_path):
+        tree = tmp_path / "z-anime" / "diffusers"
+        (tree / "transformer").mkdir(parents=True)
+        (tree / "transformer" / "config.json").write_text("{}")
+        _FakeMflux.built = []
+        _FakeMflux.fail_on = ""
+        cfg = _make_config(path=str(tmp_path / "z-anime"))
+        cfg.parameters = {**cfg.parameters, "model_subdir": "diffusers"}
+        s = MLXStrategy()
+        with patch("ollamadiffuser.core.inference.strategies.mlx_strategy.is_apple_silicon",
+                   return_value=True), \
+             patch.object(MLXStrategy, "_resolve_model_and_config",
+                          return_value=(_FakeMflux, MagicMock())):
+            assert s.load(cfg, device="mps")
+        assert _FakeMflux.built[-1]["model_path"] == str(tree)
+
+
+class _FakeZImageControlnet:
+    """ZImageTurboControlnet's generate_image signature, recording its calls."""
+    calls: list = []
+
+    def __init__(self, quantize=None, model_path=None, lora_paths=None,
+                 lora_scales=None, model_config=None):
+        pass
+
+    def generate_image(self, *, seed, prompt, controls, num_inference_steps=8,
+                       height=1024, width=1024, controlnet_strength=0.8, scheduler="linear"):
+        type(self).calls.append({"controls": controls, "controlnet_strength": controlnet_strength})
+        return MagicMock(image=Image.new("RGB", (64, 64), color=(0, 128, 255)))
+
+
+class TestControlNet:
+    def _load(self, variant, cls=_FakeZImageControlnet):
+        cfg = _make_config()
+        cfg.parameters = {**cfg.parameters, "mlx_variant": variant,
+                          "mlx_model_name": "z-image-turbo-controlnet-union-2.1"}
+        s = MLXStrategy()
+        with patch("ollamadiffuser.core.inference.strategies.mlx_strategy.is_apple_silicon",
+                   return_value=True), \
+             patch.object(MLXStrategy, "_resolve_model_and_config",
+                          return_value=(cls, MagicMock())):
+            assert s.load(cfg, device="mps")
+        return s
+
+    def test_controlnet_variants_say_so_to_the_controlnet_endpoint(self):
+        assert self._load("z_image-controlnet").is_controlnet_pipeline is True
+        assert self._load("flux1-controlnet").is_controlnet_pipeline is True
+        assert self._load("z_image", cls=_FakeMflux).is_controlnet_pipeline is False
+
+    def test_z_image_control_becomes_a_typed_control_spec(self, tmp_path):
+        _FakeZImageControlnet.calls = []
+        s = self._load("z_image-controlnet")
+        edges = tmp_path / "edges.png"
+        Image.new("RGB", (64, 64)).save(edges)
+        s.generate("a lighthouse", control_image=str(edges), control_type="canny",
+                   controlnet_conditioning_scale=0.7)
+        call = _FakeZImageControlnet.calls[-1]
+        (spec,) = call["controls"]
+        assert spec.type.value == "canny"
+        assert str(spec.image_path) == str(edges)
+        # diffusers' name for the strength reaches mflux's parameter.
+        assert call["controlnet_strength"] == 0.7
+
+    def test_z_image_control_without_a_type_is_refused(self, tmp_path):
+        s = self._load("z_image-controlnet")
+        edges = tmp_path / "edges.png"
+        Image.new("RGB", (64, 64)).save(edges)
+        with pytest.raises(ValueError, match="control_type"):
+            s.generate("a lighthouse", control_image=str(edges))
+
+    def test_z_image_control_without_an_image_is_refused(self):
+        s = self._load("z_image-controlnet")
+        with pytest.raises(ValueError, match="control_image"):
+            s.generate("a lighthouse", control_type="depth")
+
+
+@pytest.mark.skipif(not is_apple_silicon(), reason="MLX only runs on Apple Silicon")
+class TestInfo:
     def test_get_info_reports_backend_mlx(self):
         cls_mock, _, mflux_config_mock = _stub_resolution()
         s = MLXStrategy()

@@ -158,6 +158,35 @@ class TestGenericStrategy:
         assert result is True
         mock_pipeline_cls.from_pretrained.assert_called_once()
 
+    def test_generic_strategy_loads_from_model_subdir(self, tmp_path):
+        """SeeSee21/Z-Anime keeps its diffusers tree in diffusers/."""
+        import sys
+        from ollamadiffuser.core.inference.strategies.generic_strategy import GenericPipelineStrategy
+
+        mock_pipeline_cls = MagicMock()
+        mock_pipe_instance = MagicMock()
+        mock_pipe_instance.to.return_value = mock_pipe_instance
+        mock_pipeline_cls.from_pretrained.return_value = mock_pipe_instance
+        mock_diffusers = MagicMock()
+        mock_diffusers.ZImagePipeline = mock_pipeline_cls
+
+        config = ModelConfig(
+            name="z-anime",
+            path=str(tmp_path),
+            model_type="generic",
+            parameters={"pipeline_class": "ZImagePipeline", "model_subdir": "diffusers"},
+        )
+        original = sys.modules.get("diffusers")
+        sys.modules["diffusers"] = mock_diffusers
+        try:
+            assert GenericPipelineStrategy().load(config, "cpu") is True
+        finally:
+            if original is not None:
+                sys.modules["diffusers"] = original
+            else:
+                sys.modules.pop("diffusers", None)
+        assert mock_pipeline_cls.from_pretrained.call_args[0][0] == str(tmp_path / "diffusers")
+
     def test_generic_strategy_missing_pipeline_class(self):
         from ollamadiffuser.core.inference.strategies.generic_strategy import GenericPipelineStrategy
 

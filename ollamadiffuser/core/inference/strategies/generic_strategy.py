@@ -1,6 +1,7 @@
 """Generic pipeline inference strategy for any diffusers-compatible model."""
 
 import logging
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -81,17 +82,22 @@ class GenericPipelineStrategy(InferenceStrategy):
             if model_config.variant:
                 load_kwargs["variant"] = model_config.variant
 
-            logger.info(f"Loading {pipeline_class_name} from {model_config.path} (dtype={dtype})")
+            # Some repos keep the diffusers tree in a subfolder beside their
+            # single-file checkpoints (SeeSee21/Z-Anime: diffusers/).
+            load_path = model_config.path
+            if params.get("model_subdir"):
+                load_path = str(Path(model_config.path) / params["model_subdir"])
+            logger.info(f"Loading {pipeline_class_name} from {load_path} (dtype={dtype})")
             try:
                 self.pipeline = pipeline_cls.from_pretrained(
-                    model_config.path, **load_kwargs
+                    load_path, **load_kwargs
                 )
             except (OSError, ValueError):
                 if "variant" in load_kwargs:
                     logger.info(f"No {model_config.variant} variant files found, loading without variant")
                     load_kwargs.pop("variant")
                     self.pipeline = pipeline_cls.from_pretrained(
-                        model_config.path, **load_kwargs
+                        load_path, **load_kwargs
                     )
                 else:
                     raise

@@ -349,6 +349,7 @@ def create_app() -> FastAPI:
         control: Optional[UploadFile] = File(None),
         control_strength: Optional[float] = Form(None),
         lora: Optional[str] = Form(None),
+        lora_strength: Optional[float] = Form(None),
     ):
         """Generate a video, and return the mp4.
 
@@ -401,6 +402,7 @@ def create_app() -> FastAPI:
                 "low_ram": low_ram, "enhance_prompt": enhance_prompt,
                 "image": image_path, "audio": audio_path,
                 "control": control_path, "control_strength": control_strength, "lora": lora,
+                "lora_strength": lora_strength,
             }
             options = {k: v for k, v in options.items() if v is not None}
 
@@ -476,8 +478,14 @@ def create_app() -> FastAPI:
         control_guidance_start: float = Form(0.0),
         control_guidance_end: float = Form(1.0),
         control_image: Optional[UploadFile] = File(None),
+        control_type: Optional[str] = Form(None),
     ):
-        """Generate image with ControlNet"""
+        """Generate image with ControlNet.
+
+        ``control_type`` says what the control image is — canny, depth, pose,
+        hed, mlsd — for union ControlNets that take several kinds
+        (z-image-turbo-controlnet-mlx). Single-kind ControlNets ignore it.
+        """
         engine = _get_engine()
 
         if not engine.is_controlnet_pipeline:
@@ -504,8 +512,12 @@ def create_app() -> FastAPI:
                 controlnet_conditioning_scale=controlnet_conditioning_scale,
                 control_guidance_start=control_guidance_start,
                 control_guidance_end=control_guidance_end,
+                **({"control_type": control_type} if control_type else {}),
             )
             return _image_to_response(result)
+        except ValueError as e:
+            # A missing input or an unknown control_type: the caller's to fix.
+            raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             logger.error(f"ControlNet generation failed: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="ControlNet generation failed")

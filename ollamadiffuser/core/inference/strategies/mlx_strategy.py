@@ -60,6 +60,7 @@ SUPPORTED_MLX_VARIANTS = frozenset({
     "flux2",             # FLUX.2 klein 4B/9B (text-to-image)
     "flux2-edit",        # FLUX.2 klein editing — several reference images at once
     "z_image",           # Z-Image / Z-Image-Turbo (text-to-image)
+    "z_image-controlnet",  # Z-Image-Turbo + alibaba-pai's ControlNet Union 2.1
     "qwen-image",        # Qwen-Image / Qwen-Image-Edit
     # Families mflux added after our May 2026 line. Each one is a class and
     # an alias — see _ALIAS_ROUTED — because mflux resolves the config from
@@ -104,9 +105,18 @@ _VARIANT_REQUIRED_INPUTS = {
     "flux1-redux":      ["redux_images"],
     "flux1-depth":      ["image"],
     "flux1-controlnet": ["control_image"],
+    "z_image-controlnet": ["control_image"],
     "fibo-edit":        ["image"],
     "seedvr2":          ["image"],
 }
+
+# Variants whose job is to follow a control image. /api/generate/controlnet
+# asks the strategy this before it runs.
+_CONTROLNET_VARIANTS = frozenset({"flux1-controlnet", "z_image-controlnet"})
+
+# The control kinds Z-Image's Union ControlNet was trained on (mflux's
+# ControlType); the caller says which one the control image is.
+Z_IMAGE_CONTROL_TYPES = ("canny", "depth", "pose", "hed", "mlsd")
 
 # mflux quantization values it actually accepts. None means "no quant".
 _VALID_QUANTIZE = (None, 4, 8)
@@ -155,8 +165,8 @@ class MLXStrategy(InferenceStrategy):
     Note: mflux uses MLX arrays under the hood, not PyTorch tensors.
     The base class's ``unload()`` calls ``pipeline.to("cpu")`` which
     doesn't apply here, so we override it. ``load_lora_runtime`` from
-    the base also assumes diffusers — mflux LoRAs are passed at
-    construction time, so we override that too with a clear error.
+    the base also assumes diffusers — mflux takes LoRAs when a model is
+    built, so loading one here builds the model again with it baked in.
     """
 
     def __init__(self) -> None:
@@ -169,8 +179,17 @@ class MLXStrategy(InferenceStrategy):
         self._mlx_model = None
         # Cached for capability checks in generate() (e.g. Kontext needs image).
         self._variant: Optional[str] = None
+        # What load() built the model from — (class, quantize, mflux config,
+        # local dir) — so a LoRA change can build it again.
+        self._build_args: Optional[tuple] = None
+        # LoRAs baked into the current model, as (path, scale), in load order.
+        self._loras: list = []
         # Every MLX call runs on this one thread; see _mlx_call.
         self._runner: Optional[concurrent.futures.ThreadPoolExecutor] = None
+
+    @property
+    def is_controlnet_pipeline(self) -> bool:
+        return self._variant in _CONTROLNET_VARIANTS
 
     # MLX's streams are per-thread: an array built on one thread cannot be
     # evaluated on another, and the API generates in a thread pool. Measured on
@@ -244,34 +263,22 @@ class MLXStrategy(InferenceStrategy):
         # Hugging Face cache — measured on the box: a 36 GB pull sitting unused
         # while the server downloaded the same weights again on first load.
         local_dir = getattr(model_config, "path", None)
+        # Some repos keep the diffusers tree in a subfolder next to their
+        # single-file checkpoints (SeeSee21/Z-Anime has it under diffusers/).
+        subdir = params.get("model_subdir")
+        if local_dir and subdir:
+            local_dir = str(Path(local_dir) / subdir)
         local_dir = str(local_dir) if looks_like_model_dir(local_dir) else None
+        if local_dir:
+            logger.info(f"Using the downloaded weights at {local_dir}")
+        self._build_args = (model_cls, quantize, mflux_config, local_dir)
+        self._loras = []
         try:
-            if local_dir:
-                logger.info(f"Using the downloaded weights at {local_dir}")
-                self._mlx_model = self._mlx_call(
-                    model_cls, quantize=quantize, model_config=mflux_config,
-                    model_path=local_dir,
-                )
-            else:
-                self._mlx_model = self._mlx_call(
-                    model_cls, quantize=quantize, model_config=mflux_config
-                )
+            self._mlx_model = self._construct([])
         except Exception as e:
-            if not local_dir:
-                logger.error(f"Failed to load MLX model: {e}", exc_info=True)
-                return False
-            # A filtered download can be missing a file this family wants. The
-            # hub still has it, so say so and go there rather than failing.
-            logger.warning(
-                f"Could not load from {local_dir} ({e}); falling back to the hub."
-            )
-            try:
-                self._mlx_model = self._mlx_call(
-                    model_cls, quantize=quantize, model_config=mflux_config
-                )
-            except Exception as e2:
-                logger.error(f"Failed to load MLX model: {e2}", exc_info=True)
-                return False
+            logger.error(f"Failed to load MLX model: {e}", exc_info=True)
+            self._build_args = None
+            return False
 
         # Cache the variant so generate() can branch on capabilities.
         self._variant = variant
@@ -286,6 +293,34 @@ class MLXStrategy(InferenceStrategy):
             f"({variant} / {mlx_model_name} / quantize={quantize})"
         )
         return True
+
+    def _construct(self, loras: list):
+        """Build the mflux model from ``_build_args`` with ``loras`` baked in.
+
+        Loads the directory ``pull`` filled when there is one. Without it,
+        mflux resolves the model from its own name and fetches the repo a
+        second time into the Hugging Face cache.
+        """
+        model_cls, quantize, mflux_config, local_dir = self._build_args
+        kwargs = {"quantize": quantize, "model_config": mflux_config}
+        if loras:
+            kwargs["lora_paths"] = [path for path, _ in loras]
+            kwargs["lora_scales"] = [scale for _, scale in loras]
+        if not local_dir:
+            return self._mlx_call(model_cls, **kwargs)
+        try:
+            return self._mlx_call(model_cls, model_path=local_dir, **kwargs)
+        except Exception as e:
+            # A LoRA that fails to map is not a download problem, and going to
+            # the hub over it would fetch the whole model again.
+            if loras:
+                raise
+            # A filtered download can be missing a file this family wants. The
+            # hub still has it, so say so and go there rather than failing.
+            logger.warning(
+                f"Could not load from {local_dir} ({e}); falling back to the hub."
+            )
+            return self._mlx_call(model_cls, **kwargs)
 
     @staticmethod
     def _resolve_model_and_config(variant: str, mlx_model_name: str):
@@ -310,6 +345,7 @@ class MLXStrategy(InferenceStrategy):
           flux2         → "klein-4b" | "klein-9b"
                           | "klein-base-4b" | "klein-base-9b"
           z_image       → "z-image" | "z-image-turbo"
+          z_image-controlnet → "z-image-turbo-controlnet-union-2.1"
           qwen-image    → "qwen-image" | "qwen-image-edit"
 
         Imports are local so this module is safe to import on non-MLX
@@ -430,6 +466,13 @@ class MLXStrategy(InferenceStrategy):
                 )
             return ZImage, factories[mlx_model_name]()
 
+        if variant == "z_image-controlnet":
+            from mflux.models.z_image.variants.controlnet import ZImageTurboControlnet
+            from mflux.models.common.config.model_config import ModelConfig
+            return ZImageTurboControlnet, ModelConfig.from_name(
+                model_name=mlx_model_name, base_model=None
+            )
+
         if variant == "qwen-image":
             from mflux.models.qwen.variants.txt2img.qwen_image import QwenImage
             from mflux.models.common.config.model_config import ModelConfig
@@ -540,7 +583,17 @@ class MLXStrategy(InferenceStrategy):
             "controlnet_image_path": controlnet_image_path,
             "redux_image_paths": redux_image_paths,
             "image_strength": kwargs.get("strength"),
-            "controlnet_strength": kwargs.get("controlnet_strength"),
+            # /api/generate/controlnet and the engine call it
+            # controlnet_conditioning_scale, diffusers' name; mflux's is
+            # controlnet_strength. Either one reaches the model.
+            "controlnet_strength": (
+                kwargs.get("controlnet_strength")
+                if kwargs.get("controlnet_strength") is not None
+                else kwargs.get("controlnet_conditioning_scale")
+            ),
+            "controls": self._z_image_controls(
+                controlnet_image_path, kwargs.get("control_type") or params.get("control_type")
+            ) if self._variant == "z_image-controlnet" else None,
             "redux_image_strengths": kwargs.get("redux_image_strengths"),
             "negative_prompt": neg,
         }
@@ -604,6 +657,19 @@ class MLXStrategy(InferenceStrategy):
         )
 
     @staticmethod
+    def _z_image_controls(image_path: Optional[str], control_type: Optional[str]) -> list:
+        """The ``controls`` list Z-Image's Union ControlNet takes: one image, and
+        which kind of map it is. The kind is not guessable from the pixels."""
+        if control_type not in Z_IMAGE_CONTROL_TYPES:
+            raise ValueError(
+                f"z_image-controlnet needs control_type, one of {list(Z_IMAGE_CONTROL_TYPES)} "
+                f"(got {control_type!r}): say what the control image is — edges, depth, "
+                f"a pose skeleton..."
+            )
+        from mflux.models.z_image.variants.controlnet import ControlSpec, ControlType
+        return [ControlSpec(type=ControlType(control_type), image_path=image_path)]
+
+    @staticmethod
     def _materialize_image_path(image_arg) -> Optional[str]:
         """Normalize an image kwarg to a path string mflux can read."""
         if image_arg is None:
@@ -645,26 +711,123 @@ class MLXStrategy(InferenceStrategy):
         self.model_config = None
         self.current_lora = None
         self._variant = None
+        self._build_args = None
+        self._loras = []
         logger.info("MLX model unloaded")
 
-    # ----- Unsupported on this backend ----------------------------------
+    # ----- LoRA ---------------------------------------------------------
+    #
+    # mflux takes LoRAs when a model is built and bakes them into the
+    # weights, so there is nothing to attach to a running model: loading or
+    # unloading one builds the model again. That costs a reload — seconds
+    # from a warm disk — and nothing per step afterwards. LoRAs stack, as
+    # they do on the diffusers path, which names each new one an adapter of
+    # its own: a speed LoRA and a style LoRA together is the usual pair.
+
+    @staticmethod
+    def _resolve_lora(repo_id: str, weight_name: Optional[str] = None) -> str:
+        """A path mflux can load: a local file, or ``repo:file`` for the hub."""
+        local = Path(str(repo_id)).expanduser()
+        if local.is_file():
+            return str(local)
+        if local.is_dir():
+            if weight_name:
+                candidate = local / weight_name
+                if candidate.is_file():
+                    return str(candidate)
+                raise FileNotFoundError(f"{weight_name} is not in {local}")
+            files = sorted(local.glob("*.safetensors"))
+            if len(files) == 1:
+                return str(files[0])
+            names = ", ".join(f.name for f in files) or "none"
+            raise ValueError(
+                f"{local} holds {len(files)} .safetensors files ({names}); "
+                "name one with weight_name"
+            )
+        # mflux fetches "org/repo:file.safetensors" itself, into its own cache.
+        return f"{repo_id}:{weight_name}" if weight_name else str(repo_id)
+
+    def _takes_loras(self) -> bool:
+        import inspect
+
+        model_cls = self._build_args[0]
+        try:
+            return "lora_paths" in inspect.signature(model_cls.__init__).parameters
+        except (TypeError, ValueError):
+            return False
+
+    def _rebuild(self, loras: list) -> None:
+        """Replace the model with one built with ``loras``. Raises on failure,
+        with no model loaded."""
+        import gc
+
+        # Let the old weights go first: two copies of a 20B model do not fit.
+        self._mlx_model = None
+        self.pipeline = None
+        gc.collect()
+        self._mlx_model = self._construct(loras)
+        self.pipeline = self._mlx_model
+        self._loras = list(loras)
+
+    def _restore(self, loras: list) -> None:
+        try:
+            self._rebuild(loras)
+        except Exception as e:
+            logger.error(f"Could not rebuild the model afterwards either: {e}")
 
     def load_lora_runtime(self, repo_id, weight_name=None, scale=1.0) -> bool:
-        """LoRA at runtime is not yet wired for the MLX backend.
+        """Bake a LoRA into the model, on top of any already loaded.
 
-        mflux expects ``lora_paths`` and ``lora_scales`` at construction
-        time, not at runtime. Supporting hot-swap would require
-        reconstructing the Flux1 instance — deferred until users ask.
+        Loading the same file again changes its scale rather than adding it
+        twice. The model is built again with the new set.
         """
-        logger.error(
-            "Runtime LoRA loading is not supported on the MLX backend yet. "
-            "mflux takes lora_paths/lora_scales at construction time. "
-            "Track via https://github.com/LocalKinAI/ollamadiffuser/issues/7"
-        )
-        return False
+        if self._mlx_model is None or self._build_args is None:
+            raise RuntimeError("Model not loaded")
+        if not self._takes_loras():
+            logger.error(
+                f"mflux's {self._build_args[0].__name__} takes no LoRAs, so "
+                f"{self._variant!r} models can't load one."
+            )
+            return False
+        try:
+            path = self._resolve_lora(repo_id, weight_name)
+        except (FileNotFoundError, ValueError) as e:
+            logger.error(f"Failed to load LoRA: {e}")
+            return False
+
+        previous = list(self._loras)
+        loras = [(p, s) for p, s in previous if p != path] + [(path, float(scale))]
+        logger.info(f"Rebuilding the MLX model with {len(loras)} LoRA(s); adding {path}")
+        try:
+            self._rebuild(loras)
+        except Exception as e:
+            logger.error(f"Failed to load LoRA {path}: {e}", exc_info=True)
+            self._restore(previous)
+            return False
+        self.current_lora = {
+            "repo_id": repo_id,
+            "weight_name": weight_name,
+            "scale": float(scale),
+            "loaded": True,
+            "stack": [{"path": p, "scale": s} for p, s in loras],
+        }
+        logger.info(f"LoRA loaded from {path}")
+        return True
 
     def unload_lora(self) -> bool:
-        return False
+        """Drop every LoRA by building the model without them."""
+        if self._mlx_model is None or self._build_args is None or not self._loras:
+            return False
+        previous = list(self._loras)
+        try:
+            self._rebuild([])
+        except Exception as e:
+            logger.error(f"Failed to unload LoRAs: {e}", exc_info=True)
+            self._restore(previous)
+            return False
+        self.current_lora = None
+        logger.info("LoRAs unloaded")
+        return True
 
     def get_info(self):
         info = super().get_info()

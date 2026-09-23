@@ -31,6 +31,29 @@ models:
       type: FLUX.1 Non-Commercial License
       requires_agreement: true
       commercial_use: false
+  flux.1-krea-dev:
+    repo_id: black-forest-labs/FLUX.1-Krea-dev
+    model_type: flux
+    variant: fp16
+    parameters:
+      num_inference_steps: 28
+      guidance_scale: 4.5
+      max_sequence_length: 512
+    hardware_requirements:
+      min_vram_gb: 20
+      recommended_vram_gb: 24
+      min_ram_gb: 32
+      recommended_ram_gb: 64
+      disk_space_gb: 34
+      supported_devices:
+      - CUDA
+      performance_notes: FLUX.1 Krea [dev] through diffusers' FluxPipeline, a FLUX.1-dev drop-in trained
+        toward natural light and texture. flux.1-krea-dev-mlx is the Apple Silicon version. Gated,
+        non-commercial.
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
   flux.1-schnell:
     repo_id: black-forest-labs/FLUX.1-schnell
     model_type: flux
@@ -372,11 +395,11 @@ models:
       supported_devices:
       - MPS
       performance_notes: Apple Silicon native FLUX.2 9B at 8-bit MLX. Fits Mac Pro M1 32GB; tight on M4
-        16GB. Apache 2.0.
+        16GB. Gated, non-commercial — unlike the 4B, which is Apache 2.0.
     license_info:
-      type: Apache 2.0
-      requires_agreement: false
-      commercial_use: true
+      type: FLUX Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
   flux.2-klein-base-4b-mlx:
     repo_id: black-forest-labs/FLUX.2-klein-base-4B
     # The root flux-2-klein-base-4b.safetensors is the transformer again,
@@ -467,7 +490,7 @@ models:
       recommended_vram_gb: 12
       min_ram_gb: 16
       recommended_ram_gb: 24
-      disk_space_gb: 8
+      disk_space_gb: 33
       supported_devices:
       - MPS
       performance_notes: Apple Silicon native Z-Image-Turbo via mflux. 6B parameters, 8-step DMD, 8-bit
@@ -498,6 +521,63 @@ models:
       performance_notes: Z-Image, the undistilled 6B base of Z-Image-Turbo, at 8-bit MLX. About six times
         the steps of Turbo, with CFG, in exchange for more varied output, working negative prompts, and
         a base to fine-tune or train LoRAs on. Apache 2.0.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  z-anime-mlx:
+    repo_id: SeeSee21/Z-Anime
+    # The repo is mostly single-file checkpoints for ComfyUI (bf16, fp8,
+    # distilled); mflux reads the diffusers tree in diffusers/.
+    allow_patterns:
+    - "diffusers/**"
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: z_image
+      mlx_model_name: z-image
+      model_subdir: diffusers
+      quantize: 8
+      num_inference_steps: 40
+      guidance_scale: 4.0
+    hardware_requirements:
+      min_vram_gb: 6
+      recommended_vram_gb: 12
+      min_ram_gb: 16
+      recommended_ram_gb: 24
+      disk_space_gb: 18
+      supported_devices:
+      - MPS
+      performance_notes: Z-Anime Base at 8-bit MLX — a full anime fine-tune of Z-Image base, not a LoRA
+        merge, loaded through mflux's Z-Image class. The card gives 28-50 steps with CFG and full
+        negative-prompt support. Apache 2.0.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  z-image-turbo-controlnet-mlx:
+    repo_id: Tongyi-MAI/Z-Image-Turbo
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: z_image-controlnet
+      mlx_model_name: z-image-turbo-controlnet-union-2.1
+      quantize: 8
+      num_inference_steps: 8
+      guidance_scale: 0.0
+    hardware_requirements:
+      min_vram_gb: 10
+      recommended_vram_gb: 16
+      min_ram_gb: 16
+      recommended_ram_gb: 32
+      disk_space_gb: 40
+      supported_devices:
+      - MPS
+      performance_notes: Z-Image-Turbo with alibaba-pai's ControlNet Union 2.1, at 8-bit MLX, 8 steps.
+        One model for five kinds of control — pass control_image and control_type (canny, depth, pose,
+        hed or mlsd), and optionally controlnet_strength (0.65-1.0 recommended, 0.8 by default). pull
+        fetches Z-Image-Turbo; mflux downloads the 6.7 GB ControlNet from alibaba-pai the first time it
+        loads. Apache 2.0.
     license_info:
       type: Apache 2.0
       requires_agreement: false
@@ -1581,11 +1661,285 @@ models:
       recommended_vram_gb: 16
       min_ram_gb: 16
       recommended_ram_gb: 32
-      disk_space_gb: 14
+      disk_space_gb: 33
       supported_devices:
       - CUDA
       performance_notes: Alibaba 6B model. 8-step turbo generation. Bilingual Chinese/English. Requires
         diffusers from source.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  z-image:
+    repo_id: Tongyi-MAI/Z-Image
+    model_type: generic
+    variant: fp16
+    parameters:
+      pipeline_class: ZImagePipeline
+      num_inference_steps: 50
+      guidance_scale: 4.0
+      torch_dtype: bfloat16
+      enable_cpu_offload: true
+    hardware_requirements:
+      min_vram_gb: 16
+      recommended_vram_gb: 24
+      min_ram_gb: 24
+      recommended_ram_gb: 32
+      disk_space_gb: 21
+      supported_devices:
+      - CUDA
+      performance_notes: Z-Image, the undistilled 6B base of Z-Image-Turbo, through diffusers. 50 steps with CFG; more varied
+        than Turbo, follows negative prompts, the base for LoRA training. z-image-mlx is the Apple Silicon
+        version. Apache 2.0.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  flux.2-klein-base-4b:
+    # The root flux-2-klein-base-4b.safetensors repeats transformer/.
+    repo_id: black-forest-labs/FLUX.2-klein-base-4B
+    allow_patterns:
+    - "model_index.json"
+    - "scheduler/*"
+    - "text_encoder/*"
+    - "tokenizer/*"
+    - "transformer/*"
+    - "vae/*"
+    model_type: generic
+    variant: fp16
+    parameters:
+      pipeline_class: Flux2KleinPipeline
+      num_inference_steps: 50
+      guidance_scale: 4.0
+      torch_dtype: bfloat16
+    hardware_requirements:
+      min_vram_gb: 10
+      recommended_vram_gb: 16
+      min_ram_gb: 16
+      recommended_ram_gb: 32
+      disk_space_gb: 16
+      supported_devices:
+      - CUDA
+      performance_notes: The undistilled FLUX.2 klein 4B through diffusers, 50 steps with CFG. flux.2-klein-base-4b-mlx is the
+        Apple Silicon version. Apache 2.0.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  flux.2-klein-9b:
+    # The root flux-2-klein-9b.safetensors repeats transformer/.
+    repo_id: black-forest-labs/FLUX.2-klein-9B
+    allow_patterns:
+    - "model_index.json"
+    - "scheduler/*"
+    - "text_encoder/*"
+    - "tokenizer/*"
+    - "transformer/*"
+    - "vae/*"
+    model_type: generic
+    variant: fp16
+    parameters:
+      pipeline_class: Flux2KleinPipeline
+      num_inference_steps: 4
+      guidance_scale: 1.0
+      torch_dtype: bfloat16
+      enable_cpu_offload: true
+    hardware_requirements:
+      min_vram_gb: 20
+      recommended_vram_gb: 32
+      min_ram_gb: 32
+      recommended_ram_gb: 64
+      disk_space_gb: 35
+      supported_devices:
+      - CUDA
+      performance_notes: FLUX.2 klein 9B through diffusers, 4 steps, text-to-image and editing with reference images passed
+        as image. flux.2-klein-9b-mlx is the Apple Silicon version. Gated, non-commercial.
+    license_info:
+      type: FLUX Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
+  ernie-image-turbo:
+    # ErnieImagePipeline's model_index lists pe and pe_tokenizer, so the
+    # diffusers entry keeps the prompt enhancer the MLX one leaves out.
+    repo_id: baidu/ERNIE-Image-Turbo
+    allow_patterns:
+    - "model_index.json"
+    - "scheduler/*"
+    - "text_encoder/*"
+    - "tokenizer/*"
+    - "transformer/*"
+    - "vae/*"
+    - "pe/*"
+    - "pe_tokenizer/*"
+    model_type: generic
+    variant: fp16
+    parameters:
+      pipeline_class: ErnieImagePipeline
+      num_inference_steps: 8
+      guidance_scale: 1.0
+      torch_dtype: bfloat16
+      enable_cpu_offload: true
+    hardware_requirements:
+      min_vram_gb: 20
+      recommended_vram_gb: 32
+      min_ram_gb: 32
+      recommended_ram_gb: 48
+      disk_space_gb: 32
+      supported_devices:
+      - CUDA
+      performance_notes: ERNIE-Image-Turbo (8B) through diffusers, 8 steps. Unlike the MLX entry this one downloads pe/, the
+        prompt-enhancer LLM, because ErnieImagePipeline lists it as a component. Apache 2.0.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  ernie-image:
+    repo_id: baidu/ERNIE-Image
+    allow_patterns:
+    - "model_index.json"
+    - "scheduler/*"
+    - "text_encoder/*"
+    - "tokenizer/*"
+    - "transformer/*"
+    - "vae/*"
+    - "pe/*"
+    - "pe_tokenizer/*"
+    model_type: generic
+    variant: fp16
+    parameters:
+      pipeline_class: ErnieImagePipeline
+      num_inference_steps: 50
+      guidance_scale: 4.0
+      torch_dtype: bfloat16
+      enable_cpu_offload: true
+    hardware_requirements:
+      min_vram_gb: 20
+      recommended_vram_gb: 32
+      min_ram_gb: 32
+      recommended_ram_gb: 48
+      disk_space_gb: 32
+      supported_devices:
+      - CUDA
+      performance_notes: ERNIE-Image (8B), the SFT model behind the Turbo, through diffusers at 50 steps at guidance 4.0.
+        Apache 2.0.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  krea-2-turbo:
+    # The root turbo.safetensors repeats transformer/ in another layout.
+    repo_id: krea/Krea-2-Turbo
+    allow_patterns:
+    - "model_index.json"
+    - "scheduler/*"
+    - "text_encoder/*"
+    - "tokenizer/*"
+    - "transformer/*"
+    - "vae/*"
+    model_type: generic
+    variant: fp16
+    parameters:
+      pipeline_class: Krea2Pipeline
+      num_inference_steps: 8
+      guidance_scale: 0.0
+      torch_dtype: bfloat16
+      enable_cpu_offload: true
+    hardware_requirements:
+      min_vram_gb: 24
+      recommended_vram_gb: 40
+      min_ram_gb: 32
+      recommended_ram_gb: 64
+      disk_space_gb: 36
+      supported_devices:
+      - CUDA
+      performance_notes: Krea 2 Turbo (12B) through diffusers, 8 steps without guidance, as diffusers' Krea2Pipeline example
+        runs it. krea-2-turbo-mlx is the Apple Silicon version. Gated repo.
+    license_info:
+      type: Krea 2 Community License
+      requires_agreement: true
+      commercial_use: false
+  krea-2-raw:
+    # The root raw.safetensors repeats transformer/ in another layout.
+    repo_id: krea/Krea-2-Raw
+    allow_patterns:
+    - "model_index.json"
+    - "scheduler/*"
+    - "text_encoder/*"
+    - "tokenizer/*"
+    - "transformer/*"
+    - "vae/*"
+    model_type: generic
+    variant: fp16
+    parameters:
+      pipeline_class: Krea2Pipeline
+      num_inference_steps: 28
+      guidance_scale: 4.5
+      torch_dtype: bfloat16
+      enable_cpu_offload: true
+    hardware_requirements:
+      min_vram_gb: 24
+      recommended_vram_gb: 40
+      min_ram_gb: 32
+      recommended_ram_gb: 64
+      disk_space_gb: 36
+      supported_devices:
+      - CUDA
+      performance_notes: Krea 2 Raw (12B), the undistilled base, through diffusers at 28 steps and guidance 4.5 — the
+        settings of diffusers' Krea2Pipeline example. For fine-tuning and LoRA training. Gated repo.
+    license_info:
+      type: Krea 2 Community License
+      requires_agreement: true
+      commercial_use: false
+  qwen-image:
+    repo_id: Qwen/Qwen-Image-2512
+    model_type: generic
+    variant: fp16
+    parameters:
+      pipeline_class: QwenImagePipeline
+      num_inference_steps: 50
+      guidance_scale: 1.0
+      torch_dtype: bfloat16
+      enable_cpu_offload: true
+    hardware_requirements:
+      min_vram_gb: 24
+      recommended_vram_gb: 48
+      min_ram_gb: 64
+      recommended_ram_gb: 96
+      disk_space_gb: 58
+      supported_devices:
+      - CUDA
+      performance_notes: Qwen-Image 2512 (20B) in bf16 through diffusers. guidance_scale is for guidance-distilled
+        checkpoints; the CFG is the pipeline's true_cfg_scale, which runs because the engine always sends a
+        negative prompt. qwen-image-mlx is the Apple Silicon version. Apache 2.0.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  z-anime:
+    # The repo is mostly single-file checkpoints for ComfyUI (bf16, fp8,
+    # distilled); the diffusers tree is the diffusers/ folder.
+    repo_id: SeeSee21/Z-Anime
+    allow_patterns:
+    - "diffusers/**"
+    model_type: generic
+    variant: fp16
+    parameters:
+      pipeline_class: ZImagePipeline
+      num_inference_steps: 40
+      guidance_scale: 4.0
+      torch_dtype: bfloat16
+      model_subdir: diffusers
+    hardware_requirements:
+      min_vram_gb: 16
+      recommended_vram_gb: 24
+      min_ram_gb: 24
+      recommended_ram_gb: 32
+      disk_space_gb: 18
+      supported_devices:
+      - CUDA
+      performance_notes: Z-Anime Base, a full anime fine-tune of Z-Image base (not a LoRA merge), through diffusers. The
+        card gives 28-50 steps and full negative-prompt support. z-anime-mlx is the Apple Silicon version.
+        Apache 2.0.
     license_info:
       type: Apache 2.0
       requires_agreement: false
@@ -2078,6 +2432,35 @@ models:
       performance_notes: Apple Silicon native SeedVR2 3B at 8-bit MLX — an upscaler, not a generator.
         Requires an input image — pass image=<PIL.Image|path> to generate(). The 7B variant is the same
         repo under seedvr2-7b. Apache 2.0.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  seedvr2-7b-mlx:
+    repo_id: numz/SeedVR2_comfyUI
+    # The file names mflux's SeedVR2WeightDefinition7B loads; the fp8 and
+    # "sharp" copies of the 7B in the same repo are left behind.
+    allow_patterns:
+    - "seedvr2_ema_7b_fp16.safetensors"
+    - "ema_vae_fp16.safetensors"
+    - "*.json"
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: seedvr2
+      mlx_model_name: seedvr2-7b
+      quantize: 8
+    hardware_requirements:
+      min_vram_gb: 16
+      recommended_vram_gb: 24
+      min_ram_gb: 24
+      recommended_ram_gb: 48
+      disk_space_gb: 17
+      supported_devices:
+      - MPS
+      performance_notes: Apple Silicon native SeedVR2 7B at 8-bit MLX, the larger sibling of seedvr2-3b-mlx
+        and slower than it. An upscaler, not a
+        generator — pass image=<PIL.Image|path>. Apache 2.0.
     license_info:
       type: Apache 2.0
       requires_agreement: false

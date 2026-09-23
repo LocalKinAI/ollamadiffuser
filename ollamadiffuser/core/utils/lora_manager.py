@@ -270,9 +270,12 @@ class LoRAManager:
             
             # Load LoRA weights
             if "weight_name" in lora_info:
-                # Load specific weight file
+                # The file `lora pull` downloaded, when it is there: handing
+                # over the hub id instead sends the backend to fetch it again
+                # (mflux into a cache of its own).
+                pulled = lora_path / lora_info["weight_name"]
                 success = engine.load_lora_runtime(
-                    repo_id=lora_info["repo_id"],
+                    repo_id=str(lora_path) if pulled.is_file() else lora_info["repo_id"],
                     weight_name=lora_info["weight_name"],
                     scale=scale
                 )
