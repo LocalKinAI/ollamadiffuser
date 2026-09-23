@@ -156,6 +156,46 @@ models:
       type: FLUX.1 Non-Commercial License
       requires_agreement: true
       commercial_use: false
+  flux.1-krea-dev-mlx:
+    repo_id: black-forest-labs/FLUX.1-Krea-dev
+    # Same as FLUX.1-dev: the root flux1-krea-dev.safetensors and
+    # ae.safetensors repeat the diffusers folders for ComfyUI.
+    allow_patterns:
+    - "transformer/*.json"
+    - "transformer/*.safetensors"
+    - "text_encoder/*.json"
+    - "text_encoder/*.safetensors"
+    - "text_encoder_2/*.json"
+    - "text_encoder_2/*.safetensors"
+    - "tokenizer/**"
+    - "tokenizer_2/**"
+    - "vae/*.json"
+    - "vae/*.safetensors"
+    - "*.json"
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: flux1
+      mlx_model_name: krea-dev
+      quantize: 8
+      num_inference_steps: 28
+      guidance_scale: 4.5
+      max_sequence_length: 512
+    hardware_requirements:
+      min_vram_gb: 12
+      recommended_vram_gb: 16
+      min_ram_gb: 16
+      recommended_ram_gb: 32
+      disk_space_gb: 34
+      supported_devices:
+      - MPS
+      performance_notes: FLUX.1 Krea [dev] at 8-bit MLX. A FLUX.1-dev drop-in trained by Krea away from
+        the plastic "AI look", toward natural light and texture. FLUX.1-dev LoRAs load on it. Gated,
+        non-commercial.
+    license_info:
+      type: FLUX.1 Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
   flux.1-schnell-mlx-q4:
     repo_id: black-forest-labs/FLUX.1-schnell
     # mflux reads the diffusers layout; the root single-file
@@ -337,6 +377,81 @@ models:
       type: Apache 2.0
       requires_agreement: false
       commercial_use: true
+  flux.2-klein-base-4b-mlx:
+    repo_id: black-forest-labs/FLUX.2-klein-base-4B
+    # The root flux-2-klein-base-4b.safetensors is the transformer again,
+    # for ComfyUI; mflux reads the diffusers folders.
+    allow_patterns:
+    - "transformer/*.json"
+    - "transformer/*.safetensors"
+    - "text_encoder/*.json"
+    - "text_encoder/*.safetensors"
+    - "tokenizer/**"
+    - "vae/*.json"
+    - "vae/*.safetensors"
+    - "*.json"
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: flux2
+      mlx_model_name: klein-base-4b
+      quantize: 8
+      # Not distilled: the model card's 50 steps at guidance 4.0. mflux only
+      # runs true CFG above guidance 1.0, which the engine's default
+      # negative prompt then feeds.
+      num_inference_steps: 50
+      guidance_scale: 4.0
+    hardware_requirements:
+      min_vram_gb: 6
+      recommended_vram_gb: 12
+      min_ram_gb: 16
+      recommended_ram_gb: 32
+      disk_space_gb: 16
+      supported_devices:
+      - MPS
+      performance_notes: The undistilled FLUX.2 klein 4B at 8-bit MLX. Slower than klein-4b (50 steps
+        with CFG against 4) but more varied, it follows negative prompts, and it is the checkpoint to
+        train LoRAs on. Apache 2.0.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  flux.2-klein-9b-kv-edit-mlx:
+    repo_id: black-forest-labs/FLUX.2-klein-9b-kv
+    allow_patterns:
+    - "transformer/*.json"
+    - "transformer/*.safetensors"
+    - "text_encoder/*.json"
+    - "text_encoder/*.safetensors"
+    - "tokenizer/**"
+    - "vae/*.json"
+    - "vae/*.safetensors"
+    - "*.json"
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      # An editing checkpoint: mflux's klein edit class turns on its KV cache
+      # for this config, so the reference images are encoded once, not per step.
+      mlx_variant: flux2-edit
+      mlx_model_name: klein-9b-kv
+      quantize: 8
+      num_inference_steps: 4
+      guidance_scale: 1.0
+    hardware_requirements:
+      min_vram_gb: 12
+      recommended_vram_gb: 20
+      min_ram_gb: 24
+      recommended_ram_gb: 32
+      disk_space_gb: 35
+      supported_devices:
+      - MPS
+      performance_notes: FLUX.2 klein 9B built for multi-reference editing, at 8-bit MLX, 4 steps. The
+        reference images' attention keys and values are cached, so extra references cost less than
+        with klein-4b-edit. Needs at least one input image. Gated, non-commercial.
+    license_info:
+      type: FLUX Non-Commercial License
+      requires_agreement: true
+      commercial_use: false
   z-image-turbo-mlx:
     repo_id: Tongyi-MAI/Z-Image-Turbo
     model_type: mlx
@@ -357,6 +472,32 @@ models:
       - MPS
       performance_notes: Apple Silicon native Z-Image-Turbo via mflux. 6B parameters, 8-step DMD, 8-bit
         MLX. Fits Mac Mini M4 16GB. Apache 2.0.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  z-image-mlx:
+    repo_id: Tongyi-MAI/Z-Image
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: z_image
+      mlx_model_name: z-image
+      quantize: 8
+      # The base model, not the DMD student: the card's 50 steps, guidance 4.
+      num_inference_steps: 50
+      guidance_scale: 4.0
+    hardware_requirements:
+      min_vram_gb: 6
+      recommended_vram_gb: 12
+      min_ram_gb: 16
+      recommended_ram_gb: 24
+      disk_space_gb: 21
+      supported_devices:
+      - MPS
+      performance_notes: Z-Image, the undistilled 6B base of Z-Image-Turbo, at 8-bit MLX. About six times
+        the steps of Turbo, with CFG, in exchange for more varied output, working negative prompts, and
+        a base to fine-tune or train LoRAs on. Apache 2.0.
     license_info:
       type: Apache 2.0
       requires_agreement: false
@@ -440,6 +581,42 @@ models:
       - MPS
       performance_notes: Apple Silicon native Qwen-Image-Edit (20B) at 8-bit MLX. Image-editing companion
         to qwen-image-mlx. M1 32GB+ only. Apache 2.0.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  qwen-image-edit-2511:
+    # Through diffusers, not mflux: 2511 sets zero_cond_t in its transformer
+    # config, which diffusers implements and mflux does not read. Loaded by
+    # mflux's qwen-image-edit class, these weights would run as 2509 without
+    # saying so.
+    repo_id: Qwen/Qwen-Image-Edit-2511
+    model_type: generic
+    variant: fp16
+    parameters:
+      pipeline_class: QwenImageEditPlusPipeline
+      # The model card's settings. guidance_scale is for guidance-distilled
+      # checkpoints and this is not one; the CFG is the pipeline's
+      # true_cfg_scale (4.0 by default), which runs when a negative prompt
+      # is given, and the engine always gives one.
+      num_inference_steps: 40
+      guidance_scale: 1.0
+      torch_dtype: bfloat16
+      enable_cpu_offload: true
+    hardware_requirements:
+      min_vram_gb: 24
+      recommended_vram_gb: 48
+      min_ram_gb: 64
+      recommended_ram_gb: 96
+      disk_space_gb: 58
+      supported_devices:
+      - CUDA
+      - MPS
+      performance_notes: Qwen-Image-Edit-2511 (20B) in bf16 through diffusers. The current Qwen edit
+        model, with better character consistency across edits, multi-person group shots and built-in
+        popular LoRAs over 2509. Pass one to three reference images as image. On a Mac it holds about
+        58 GB in unified memory, so 64 GB is the floor; CUDA cards under 48 GB use CPU offload.
+        Apache 2.0.
     license_info:
       type: Apache 2.0
       requires_agreement: false
@@ -1133,6 +1310,46 @@ models:
       type: CreativeML Open RAIL++-M
       requires_agreement: false
       commercial_use: true
+  realvisxl-v5:
+    repo_id: SG161222/RealVisXL_V5.0
+    # The repo carries the weights three times: diffusers fp32, diffusers
+    # fp16, and two single-file checkpoints. The fp16 variant is what the
+    # SDXL loader asks for, 7 GB of a 42 GB repo.
+    allow_patterns:
+    - "model_index.json"
+    - "scheduler/*"
+    - "tokenizer/*"
+    - "tokenizer_2/*"
+    - "text_encoder/config.json"
+    - "text_encoder/model.fp16.safetensors"
+    - "text_encoder_2/config.json"
+    - "text_encoder_2/model.fp16.safetensors"
+    - "unet/config.json"
+    - "unet/diffusion_pytorch_model.fp16.safetensors"
+    - "vae/config.json"
+    - "vae/diffusion_pytorch_model.fp16.safetensors"
+    model_type: sdxl
+    variant: fp16
+    parameters:
+      num_inference_steps: 30
+      guidance_scale: 5.0
+    hardware_requirements:
+      min_vram_gb: 6
+      recommended_vram_gb: 10
+      min_ram_gb: 12
+      recommended_ram_gb: 24
+      disk_space_gb: 7
+      supported_devices:
+      - CUDA
+      - MPS
+      - CPU
+      performance_notes: RealVisXL V5.0, the current release of the photorealistic SDXL finetune that
+        realvisxl-v4 is the previous version of. The author recommends 30+ steps and a negative prompt
+        such as "bad hands, bad anatomy, ugly, deformed".
+    license_info:
+      type: CreativeML Open RAIL++-M
+      requires_agreement: false
+      commercial_use: true
   dreamshaper:
     repo_id: Lykon/DreamShaper
     model_type: sd15
@@ -1577,6 +1794,16 @@ models:
       commercial_use: true
   krea-2-turbo-mlx:
     repo_id: krea/Krea-2-Turbo
+    # mflux loads the root turbo.safetensors and skips the transformer/
+    # shards, which hold the same 26 GB in diffusers layout.
+    allow_patterns:
+    - "turbo.safetensors"
+    - "text_encoder/*.json"
+    - "text_encoder/*.safetensors"
+    - "tokenizer/**"
+    - "vae/*.json"
+    - "vae/*.safetensors"
+    - "*.json"
     model_type: mlx
     variant: mlx-q8
     parameters:
@@ -1590,11 +1817,49 @@ models:
       recommended_vram_gb: 20
       min_ram_gb: 24
       recommended_ram_gb: 32
-      disk_space_gb: 62
+      disk_space_gb: 36
       supported_devices:
       - MPS
       performance_notes: Apple Silicon native Krea 2 Turbo (12B) at 8-bit MLX, 8 steps. Wide stylistic
         range with a photographic default; nine official style LoRAs upstream. Gated repo.
+    license_info:
+      type: Krea 2 Community License
+      requires_agreement: true
+      commercial_use: false
+  krea-2-raw-mlx:
+    repo_id: krea/Krea-2-Raw
+    # The reverse of Turbo: mflux fetches the transformer/ shards here and
+    # leaves the root raw.safetensors, the same weights, behind.
+    allow_patterns:
+    - "transformer/*.json"
+    - "transformer/*.safetensors"
+    - "text_encoder/*.json"
+    - "text_encoder/*.safetensors"
+    - "tokenizer/**"
+    - "vae/*.json"
+    - "vae/*.safetensors"
+    - "*.json"
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: krea2
+      mlx_model_name: krea-2-raw
+      quantize: 8
+      # Undistilled base: full step count, and guidance above 1.0 so mflux
+      # runs CFG.
+      num_inference_steps: 28
+      guidance_scale: 4.5
+    hardware_requirements:
+      min_vram_gb: 12
+      recommended_vram_gb: 20
+      min_ram_gb: 24
+      recommended_ram_gb: 32
+      disk_space_gb: 36
+      supported_devices:
+      - MPS
+      performance_notes: Krea 2 Raw (12B), the undistilled base of Krea 2 Turbo, at 8-bit MLX. Several
+        times slower than Turbo; Krea recommends it as the checkpoint for fine-tuning and LoRA training.
+        Gated repo.
     license_info:
       type: Krea 2 Community License
       requires_agreement: true
@@ -1625,6 +1890,16 @@ models:
       commercial_use: true
   ernie-image-turbo-mlx:
     repo_id: baidu/ERNIE-Image-Turbo
+    # pe/ is Baidu's 7.7 GB prompt-enhancer LLM, which mflux never loads.
+    allow_patterns:
+    - "transformer/*.json"
+    - "transformer/*.safetensors"
+    - "text_encoder/*.json"
+    - "text_encoder/*.safetensors"
+    - "tokenizer/**"
+    - "vae/*.json"
+    - "vae/*.safetensors"
+    - "*.json"
     model_type: mlx
     variant: mlx-q8
     parameters:
@@ -1637,12 +1912,46 @@ models:
       recommended_vram_gb: 14
       min_ram_gb: 16
       recommended_ram_gb: 24
-      disk_space_gb: 32
+      disk_space_gb: 24
       supported_devices:
       - MPS
       performance_notes: Apple Silicon native ERNIE-Image-Turbo (8B) at 8-bit MLX, 8 steps. Single-stream
         DiT from Baidu; vivid, high-contrast output. The base ERNIE-Image wants 50 steps at guidance 4.0.
         Apache 2.0.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  ernie-image-mlx:
+    repo_id: baidu/ERNIE-Image
+    allow_patterns:
+    - "transformer/*.json"
+    - "transformer/*.safetensors"
+    - "text_encoder/*.json"
+    - "text_encoder/*.safetensors"
+    - "tokenizer/**"
+    - "vae/*.json"
+    - "vae/*.safetensors"
+    - "*.json"
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: ernie-image
+      mlx_model_name: ernie-image
+      quantize: 8
+      num_inference_steps: 50
+      guidance_scale: 4.0
+    hardware_requirements:
+      min_vram_gb: 8
+      recommended_vram_gb: 14
+      min_ram_gb: 16
+      recommended_ram_gb: 24
+      disk_space_gb: 24
+      supported_devices:
+      - MPS
+      performance_notes: ERNIE-Image (8B), the SFT model behind ERNIE-Image-Turbo, at 8-bit MLX. 50 steps
+        with CFG; Baidu positions it for instruction fidelity and general range, Turbo for speed and
+        aesthetics. Apache 2.0.
     license_info:
       type: Apache 2.0
       requires_agreement: false

@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ➕ Eight models, registry entries only
+
+- **Through mflux 0.20.0**, which already knew all six; each entry's
+  `repo_id` is what the mflux alias resolves to, checked on the M3 Ultra:
+  - `z-image-mlx` (Tongyi-MAI/Z-Image, Apache 2.0), `flux.2-klein-base-4b-mlx`
+    (Apache 2.0), `ernie-image-mlx` (Apache 2.0) and `krea-2-raw-mlx` (Krea 2
+    Community, gated): the undistilled bases of Z-Image-Turbo, klein 4B,
+    ERNIE-Image-Turbo and Krea 2 Turbo. They run the model card's full step
+    count with CFG — 50 steps at guidance 4, 28 at 4.5 for Krea — in exchange
+    for more varied output, negative prompts that work, and a checkpoint to
+    train LoRAs on.
+  - `flux.1-krea-dev-mlx` — FLUX.1 Krea [dev], 28 steps at guidance 4.5.
+    Non-commercial, gated.
+  - `flux.2-klein-9b-kv-edit-mlx` — an editing checkpoint: routed through
+    mflux's klein edit class, whose config for it turns on the KV cache, so
+    the reference images are encoded once rather than every step.
+    Non-commercial, gated.
+- **Through diffusers:**
+  - `qwen-image-edit-2511` — `QwenImageEditPlusPipeline` in bf16, 40 steps,
+    the card's settings. Not an mflux entry on purpose: 2511's transformer
+    config adds `zero_cond_t: true`, which diffusers 0.40 implements and
+    mflux does not read, so mflux's `qwen-image-edit` class would load the
+    weights and quietly run them as 2509. 58 GB resident — a 64 GB+ Mac, or
+    CPU offload on CUDA.
+  - `realvisxl-v5` — next to `realvisxl-v4`. The repo holds the weights three
+    times (fp32, fp16, two single files, 42 GB); `allow_patterns` takes the
+    7 GB fp16 set the SDXL loader asks for.
+- Every new entry's download filter was checked against the live Hugging
+  Face file list: it takes each file mflux's own download patterns take, and
+  no duplicate checkpoint. None was downloaded or benchmarked for this change.
+- **Two existing entries stop downloading weights mflux never opens.**
+  `krea-2-turbo-mlx` fetched both the root `turbo.safetensors` mflux loads
+  and the 26 GB `transformer/` shards holding the same weights: 62 → 36 GB.
+  `ernie-image-turbo-mlx` fetched `pe/`, Baidu's 7.7 GB prompt-enhancer LLM,
+  which mflux doesn't use: 32 → 24 GB. Models already pulled are unaffected.
+
 ### ♻️ `pull` uses weights that are already on disk
 
 - **`pull` checks the Hugging Face cache before downloading.** It has always

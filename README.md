@@ -10,6 +10,8 @@
 
 `qwen-image-2.1-mlx` runs Qwen's new model through mflux 0.20.0 (now the minimum mflux). On an M3 Ultra: **108 s per 1024² image at 25 steps, 45.8 GB peak** — faster than the same prompt in ComfyUI (126–134 s), with Chinese text rendered correctly. It needs a 64 GB+ Mac, and its licence is **research / non-commercial only**.
 
+Eight more models, all registry entries with no new code. **Through mflux:** the undistilled bases of models already here — `z-image-mlx`, `flux.2-klein-base-4b-mlx`, `ernie-image-mlx`, `krea-2-raw-mlx` — for varied output, working negative prompts and LoRA training; `flux.1-krea-dev-mlx`; and `flux.2-klein-9b-kv-edit-mlx`, a multi-reference editor that caches its references. **Through diffusers:** `qwen-image-edit-2511`, the current Qwen edit model (it can't go through mflux, which doesn't read 2511's `zero_cond_t` flag), and `realvisxl-v5`. `pull` also stops fetching weights mflux never loads: `krea-2-turbo-mlx` drops from 62 to 36 GB, `ernie-image-turbo-mlx` from 32 to 24 GB.
+
 ### v2.0.26 — the registry pulls what the loader loads
 
 `qwen-image-mlx` / `qwen-image-edit-mlx` were pulling 58 GB of a checkpoint mflux never loads (now `Qwen-Image-2512` / `Qwen-Image-Edit-2509`), and `seedvr2-3b-mlx` fetched a 3.4 GB fp8 file it never opened. `ollamadiffuser enable gguf` now builds with CUDA on NVIDIA machines instead of silently producing a CPU build. New: [CONTRIBUTING.md](CONTRIBUTING.md) — adding a model is a data-only PR.
@@ -139,7 +141,7 @@ Most models work **without any token** -- just install and go. See [Hugging Face
 - **🔄 LoRA Integration**: Dynamic LoRA loading and management
 - **🔌 MCP & OpenClaw**: Model Context Protocol server for AI assistant integration (OpenClaw, Claude Code, Cursor)
 - **🍎 Apple Silicon, two paths**:
-  - **MLX backend** via [mflux](https://github.com/filipstrand/mflux) — 23 native MLX entries (FLUX.1 family, FLUX.2 Klein, Z-Image, Qwen-Image, Kontext, Fill, Redux, Depth, ControlNet, and since v2.0.21 Krea 2, Boogu, ERNIE-Image, Lens, Ideogram 4, FIBO, FIBO-Edit, SeedVR2). Typically **2-3× faster** than the PyTorch + MPS path on M-series.
+  - **MLX backend** via [mflux](https://github.com/filipstrand/mflux) — 30 native MLX entries (FLUX.1 family, FLUX.1 Krea, FLUX.2 Klein, Z-Image, Qwen-Image, Kontext, Fill, Redux, Depth, ControlNet, and since v2.0.21 Krea 2, Boogu, ERNIE-Image, Lens, Ideogram 4, FIBO, FIBO-Edit, SeedVR2). Typically **2-3× faster** than the PyTorch + MPS path on M-series.
   - **PyTorch + MPS** — full diffusers pipeline support with per-model dtype handling (float16/bfloat16, NaN sanitization), GGUF Metal acceleration, and `ollamadiffuser recommend` for hardware-aware model suggestions.
 - **📦 Smart Downloads**: `ollamadiffuser pull` downloads only diffusers pipeline files — skips root-level checkpoints, ONNX/Flax exports, and safety_checker. Saves 10–200 GB per model.
 - **♻️ Reuses what's already downloaded**: if a model is already in the Hugging Face cache (from ComfyUI, mflux, `hf download`…), `ollamadiffuser pull` hard-links it instead of downloading — seconds instead of tens of GB, and no second copy on disk.
@@ -334,6 +336,7 @@ Choose from 40+ models spanning every major architecture:
 
 | Model | Base | Notes |
 |-------|------|-------|
+| `realvisxl-v5` | SDXL | Photorealistic, current release (pulls only the 7 GB fp16 set) |
 | `realvisxl-v4` | SDXL | Photorealistic, very popular |
 | `dreamshaper` | SD 1.5 | Versatile artistic model |
 | `realistic-vision-v6` | SD 1.5 | Portrait specialist |
@@ -346,6 +349,7 @@ Choose from 40+ models spanning every major architecture:
 | `flux.1-fill-dev` | FluxFillPipeline | Inpainting / outpainting |
 | `flux.1-canny-dev` | FluxControlPipeline | Canny edge control |
 | `flux.1-depth-dev` | FluxControlPipeline | Depth map control |
+| `qwen-image-edit-2511` | QwenImageEditPlusPipeline | **Qwen's current edit model** — one to three reference images, better character and group-photo consistency than 2509. bf16, 58 GB: a 64 GB+ Mac or CPU offload on CUDA. Apache 2.0 |
 
 ### Apache-2.0 Commercial-Friendly
 
@@ -388,12 +392,17 @@ MLX entries run through [mflux](https://github.com/filipstrand/mflux) on Apple S
 | `flux.1-dev-mlx` | FLUX.1 | Q8 | 14 GB | 16 GB | Non-Commercial |
 | `flux.2-klein-4b-mlx` | FLUX.2 Klein | Q8 | 7 GB | 12 GB (**M4 16GB**) | Apache 2.0 |
 | `flux.2-klein-9b-mlx` | FLUX.2 Klein | Q8 | 13 GB | 20 GB | Apache 2.0 |
+| `flux.2-klein-base-4b-mlx` | FLUX.2 Klein base (undistilled, 50-step CFG) | Q8 | 7 GB | 12 GB | Apache 2.0 |
+| `flux.1-krea-dev-mlx` | FLUX.1 Krea (12B) | Q8 | 14 GB | 16 GB | Non-Commercial (gated) |
 | `z-image-turbo-mlx` | Z-Image (6B, 8-step DMD) | Q8 | 8 GB | 12 GB (**M4 16GB**) | Apache 2.0 |
+| `z-image-mlx` | Z-Image base (6B, 50-step CFG) | Q8 | 8 GB | 12 GB | Apache 2.0 |
 | `qwen-image-mlx` | Qwen-Image (20B) | Q8 | 22 GB | 24 GB | Apache 2.0 |
 | `qwen-image-2.1-mlx` | Qwen-Image-2.1 (mflux 0.20+) | Q8 | 34 GB | 64 GB (measured 45.8 GB peak) | Qwen Research (non-commercial) |
 | `boogu-image-turbo-mlx` | Boogu Image (10B, 4-step DMD) | Q8 | 12 GB | 16 GB | Apache 2.0 |
 | `ernie-image-turbo-mlx` | ERNIE-Image (8B, 8-step) | Q8 | 10 GB | 14 GB | Apache 2.0 |
+| `ernie-image-mlx` | ERNIE-Image SFT (8B, 50-step CFG) | Q8 | 10 GB | 14 GB | Apache 2.0 |
 | `krea-2-turbo-mlx` | Krea 2 (12B, 8-step) | Q8 | 14 GB | 20 GB | Krea 2 Community (gated) |
+| `krea-2-raw-mlx` | Krea 2 Raw (12B base, for fine-tuning) | Q8 | 14 GB | 20 GB | Krea 2 Community (gated) |
 | `lens-turbo-mlx` | Lens (3.8B + 20B text encoder, 4-step) | Q8 | 16 GB | 20 GB | Other |
 | `ideogram-4-mlx` | Ideogram 4 (9B, preset schedules) | Q8 | 12 GB | 18 GB | Other |
 | `fibo-mlx` | FIBO (8B, JSON prompts) | Q8 | 11 GB | 16 GB | Bria (gated) |
@@ -409,6 +418,7 @@ MLX entries run through [mflux](https://github.com/filipstrand/mflux) on Apple S
 | `flux.1-controlnet-canny-mlx` | `control_image=` (canny edges) | Non-Commercial |
 | `flux.1-controlnet-upscaler-mlx` | `control_image=` (low-res source) | Non-Commercial |
 | `qwen-image-edit-mlx` | `image=` | Apache 2.0 |
+| `flux.2-klein-9b-kv-edit-mlx` | `image=` (one or more references) | Non-Commercial (gated) |
 | `fibo-edit-mlx` | `image=` | Bria (gated) |
 | `seedvr2-3b-mlx` | `image=` (upscales it) | Apache 2.0 |
 
