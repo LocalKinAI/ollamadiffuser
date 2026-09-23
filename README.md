@@ -2,39 +2,25 @@
 
 **Thank you for the incredible support and over 30,000 downloads!**
 
-`ollamadiffuser` is in **active development**. v2.0 brought a major architecture overhaul (strategy pattern, MCP/OpenClaw integration, Apple Silicon support, GGUF). The May 2026 line (v2.0.13 → v2.0.20) added an **MLX backend for Apple Silicon**, 7 new diffusers-pipeline models, a **compile-free default install** with a one-line `curl | sh` installer, and a **data-driven model registry** (`models.yaml`); v2.0.21 brings the MLX registry up to date with mflux — **22 MLX entries** — see [What's New](#-whats-new) below. Part of the **[LocalKinAI](https://github.com/LocalKinAI)** ecosystem.
+`ollamadiffuser` is in **active development**. **v2.1.0** is the first PyPI release since 2.0.17: **99 models** — 39 native on Apple Silicon through MLX (33 image models, 6 LTX-2 video packs) and 60 through diffusers — **video on Mac and NVIDIA**, **LoRAs on both backends**, and a compile-free install with a one-line `curl | sh` installer. See [What's New](#-whats-new) below. Part of the **[LocalKinAI](https://github.com/LocalKinAI)** ecosystem.
 
 ## 🆕 What's New
 
-### Unreleased — Qwen-Image-2.1 on Apple Silicon
+### v2.1.0 — video and LoRAs on every platform, 40 more models
 
-`qwen-image-2.1-mlx` runs Qwen's new model through mflux 0.20.0 (now the minimum mflux). On an M3 Ultra: **108 s per 1024² image at 25 steps, 45.8 GB peak** — faster than the same prompt in ComfyUI (126–134 s), with Chinese text rendered correctly. It needs a 64 GB+ Mac, and its licence is **research / non-commercial only**.
+The first PyPI release since 2.0.17, so it also brings 2.0.18–2.0.26 below to `pip`. Full notes in [CHANGELOG.md](CHANGELOG.md).
 
-Eight more models, all registry entries with no new code. **Through mflux:** the undistilled bases of models already here — `z-image-mlx`, `flux.2-klein-base-4b-mlx`, `ernie-image-mlx`, `krea-2-raw-mlx` — for varied output, working negative prompts and LoRA training; `flux.1-krea-dev-mlx`; and `flux.2-klein-9b-kv-edit-mlx`, a multi-reference editor that caches its references. **Through diffusers:** `qwen-image-edit-2511`, the current Qwen edit model (it can't go through mflux, which doesn't read 2511's `zero_cond_t` flag), and `realvisxl-v5`. `pull` also stops fetching weights mflux never loads: `krea-2-turbo-mlx` drops from 62 to 36 GB, `ernie-image-turbo-mlx` from 32 to 24 GB.
-
-**LoRAs now load on Apple Silicon.** `ollamadiffuser lora load` used to refuse every MLX model; it now rebuilds the model with the LoRA baked in, for every mflux family that takes one — FLUX.1, Kontext, FLUX.2 klein, Z-Image, Qwen-Image, Krea 2, ERNIE. LoRAs stack, so a speed LoRA and a style LoRA go on together. Measured on an M3 Ultra with a klein-4B pixel-art LoRA: the edit changes visibly, and after `lora unload` the output is identical to the run before it.
-
-**The same models on NVIDIA.** Recent additions had been Mac-only where diffusers could run them too. They now have diffusers entries: `z-image`, `flux.2-klein-base-4b`, `flux.2-klein-9b`, `ernie-image`, `ernie-image-turbo`, `krea-2-turbo`, `krea-2-raw`, `qwen-image` (2512) and `flux.1-krea-dev`. Also new: `z-anime` / `z-anime-mlx` (a full anime fine-tune of Z-Image), `seedvr2-7b-mlx`, `z-image-turbo-controlnet-mlx` (one ControlNet for canny, depth, pose, HED and MLSD), and style or motion LoRAs on LTX video.
-
-**Video on NVIDIA.** Video used to be Apple-Silicon-only (LTX-2 through ltx-2-mlx). A new `diffusers-video` path runs `wan2.1-t2v-1.3b`, `wan2.2-ti2v-5b` and `ltx-2.3-distilled` (with its soundtrack) through diffusers, behind the same `/api/generate/video`.
-
-**Licence correction:** `flux.2-klein-9b-mlx` was listed as Apache 2.0. FLUX.2 klein 9B is under the FLUX Non-Commercial License; only the 4B is Apache 2.0.
+- **🎬 Video on NVIDIA.** A new `diffusers-video` path runs `wan2.1-t2v-1.3b`, `wan2.2-ti2v-5b` and `ltx-2.3-distilled` (with its soundtrack) behind the same `POST /api/generate/video` as LTX-2 on Apple Silicon. On the Mac, LTX-2 can now follow a reference video — a pose skeleton, depth or edges — for motion no prompt can describe, and runs offline.
+- **🎛️ LoRAs on Apple Silicon.** `ollamadiffuser lora load` works on `-mlx` models: the model is rebuilt with the LoRA baked in, and LoRAs stack — a speed LoRA and a style LoRA together. FLUX.1, FLUX.2 klein, Z-Image, Qwen-Image, Krea 2, ERNIE. LTX video takes style and motion LoRAs too.
+- **🖼️ New models.** `qwen-image-2.1-mlx` (108 s per 1024² image on an M3 Ultra, faster than ComfyUI; research licence), `qwen-image-edit-2511`, the undistilled bases `z-image`, `flux.2-klein-base-4b`, `ernie-image`, `krea-2-raw`, `flux.1-krea-dev`, the anime fine-tune `z-anime`, `seedvr2-7b-mlx`, `z-image-turbo-controlnet-mlx` (one ControlNet for canny, depth, pose, HED, MLSD), `realvisxl-v5`.
+- **🖥️ Not just for Macs.** Nine models that had been Mac-only now have diffusers entries for NVIDIA: `z-image`, `flux.2-klein-base-4b`, `flux.2-klein-9b`, `ernie-image`, `ernie-image-turbo`, `krea-2-turbo`, `krea-2-raw`, `qwen-image`, `flux.1-krea-dev`.
+- **♻️ Smaller downloads.** `pull` hard-links weights already in the Hugging Face cache (from ComfyUI, mflux or `hf download`) instead of downloading them again, and entries stop fetching files their loader never opens — `krea-2-turbo-mlx` 62 → 36 GB, `ernie-image-turbo-mlx` 32 → 24 GB, Z-Anime 17.5 GB of a 202 GB repo.
+- **🔌 New endpoints.** `POST /api/face/compare` (is it still the same person?), several reference pictures on `/api/generate/img2img`, `control_type` on `/api/generate/controlnet`.
+- **Upgrading:** `pip install -U ollamadiffuser`. Two new dependencies, `av` and `ftfy`, are prebuilt wheels. The MLX backend needs mflux 0.20.0 (`ollamadiffuser enable mlx`). **Licence correction:** `flux.2-klein-9b-mlx` is FLUX Non-Commercial, not Apache 2.0.
 
 ### v2.0.26 — the registry pulls what the loader loads
 
 `qwen-image-mlx` / `qwen-image-edit-mlx` were pulling 58 GB of a checkpoint mflux never loads (now `Qwen-Image-2512` / `Qwen-Image-Edit-2509`), and `seedvr2-3b-mlx` fetched a 3.4 GB fp8 file it never opened. `ollamadiffuser enable gguf` now builds with CUDA on NVIDIA machines instead of silently producing a CPU build. New: [CONTRIBUTING.md](CONTRIBUTING.md) — adding a model is a data-only PR.
-
-### v2.0.20 — One-line `curl | sh` installer (no system Python needed)
-
-`curl -fsSL .../install.sh | sh` now installs a fully **isolated** OllamaDiffuser via [uv](https://github.com/astral-sh/uv): a standalone Python + the compile-free core under `~/.ollamadiffuser`, with a launcher on your PATH. It doesn't touch your system Python, needs no compiler, and auto-enables MLX on Apple Silicon — the Ollama-style zero-friction install.
-
-### v2.0.19 — Model registry is now data (`models.yaml`)
-
-The 59 built-in models moved from a 1500-line Python dict into a bundled [`models.yaml`](ollamadiffuser/core/config/models.yaml). Adding a model is now a **pure-data PR** — no code. Migration is zero-loss (snapshot-pinned in tests).
-
-### v2.0.18 — Compile-free default install + `enable` command
-
-The default `pip install ollamadiffuser` is now **compile-free** (prebuilt wheels only — no CMake, no CUDA toolchain). Optional backends are opt-in by name via a new command: `ollamadiffuser enable mlx | gguf | mcp` — no shell-quoted `[extras]` to get wrong, and `enable gguf` sets the right `CMAKE_ARGS` (Metal on Mac) for you. The `curl | sh` installer now defaults to the lean core and auto-enables MLX on Apple Silicon.
 
 ### v2.0.22 — video, natively: LTX-2 on Apple Silicon
 
@@ -52,6 +38,18 @@ turbo models (Boogu 4-step with bilingual EN/ZH text, ERNIE-Image, Krea 2), a
 JSON-prompted generation and editing (FIBO, FIBO-Edit) and the best open
 upscaler (SeedVR2). Each is a class and an alias: mflux resolves the config from
 the alias itself, so adding a family is data plus one line of routing.
+
+### v2.0.20 — One-line `curl | sh` installer (no system Python needed)
+
+`curl -fsSL .../install.sh | sh` now installs a fully **isolated** OllamaDiffuser via [uv](https://github.com/astral-sh/uv): a standalone Python + the compile-free core under `~/.ollamadiffuser`, with a launcher on your PATH. It doesn't touch your system Python, needs no compiler, and auto-enables MLX on Apple Silicon — the Ollama-style zero-friction install.
+
+### v2.0.19 — Model registry is now data (`models.yaml`)
+
+The 59 built-in models moved from a 1500-line Python dict into a bundled [`models.yaml`](ollamadiffuser/core/config/models.yaml). Adding a model is now a **pure-data PR** — no code. Migration is zero-loss (snapshot-pinned in tests).
+
+### v2.0.18 — Compile-free default install + `enable` command
+
+The default `pip install ollamadiffuser` is now **compile-free** (prebuilt wheels only — no CMake, no CUDA toolchain). Optional backends are opt-in by name via a new command: `ollamadiffuser enable mlx | gguf | mcp` — no shell-quoted `[extras]` to get wrong, and `enable gguf` sets the right `CMAKE_ARGS` (Metal on Mac) for you. The `curl | sh` installer now defaults to the lean core and auto-enables MLX on Apple Silicon.
 
 ### v2.0.17 — MLX Phase 2.5: FLUX.1 family completion
 

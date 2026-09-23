@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-09-23
+
+The first PyPI release since **2.0.17**. Versions 2.0.18 to 2.0.26 below were
+tagged in git but never uploaded, so everything from 2.0.18 on reaches `pip`
+users here. A minor version because it adds features — video off Apple
+Silicon, LoRAs on MLX, new model types — and two runtime dependencies, while
+everything that worked in 2.0.17 still does.
+
+### Upgrading from 2.0.17
+
+- `pip install -U ollamadiffuser`, or re-run the `curl | sh` installer.
+- **Two new dependencies**, both prebuilt wheels: `av` (writes video mp4s) and
+  `ftfy` (needed by diffusers' Wan image-to-video). The default install is
+  still compile-free.
+- **mflux 0.20.0** is the minimum for the MLX backend (`ollamadiffuser enable
+  mlx` installs it); Qwen-Image-2.1 needs it.
+- The built-in registry is now `models.yaml` (2.0.19). Your own entries go in
+  `~/.ollamadiffuser/models.yaml`.
+- **Licence correction:** `flux.2-klein-9b-mlx` was listed as Apache 2.0 and
+  commercial. FLUX.2 klein 9B is under the FLUX Non-Commercial License.
+
+### Highlights
+
+- **Video on every platform.** NVIDIA gets a diffusers video path — Wan 2.1
+  1.3B, Wan 2.2 TI2V-5B, LTX-2.3 distilled with sound — next to LTX-2 on
+  Apple Silicon (2.0.22), which can now follow a reference video (motion
+  transfer) and run offline.
+- **LoRAs on Apple Silicon**, stacking, for FLUX.1, FLUX.2 klein, Z-Image,
+  Qwen-Image, Krea 2 and ERNIE.
+- **99 models**, up from 59: 39 native on Apple Silicon (33 image models
+  through mflux, 6 LTX-2 video packs) and 60 through diffusers. New since
+  2.0.17 include Qwen-Image-2.1, Qwen-Image-Edit-2511, Z-Image, Z-Anime,
+  FLUX.2 klein base, FLUX.1 Krea, Krea 2, ERNIE-Image, Boogu, Lens,
+  Ideogram 4, FIBO, SeedVR2 3B/7B, a Z-Image union ControlNet and
+  RealVisXL V5, and diffusers entries for NVIDIA of nine models that had
+  been Mac-only.
+- **`pull` reuses the Hugging Face cache**: weights ComfyUI, mflux or
+  `hf download` already fetched are hard-linked, not downloaded again; and
+  several entries stop downloading files their loader never opens.
+- **Compile-free install** with a one-line `curl | sh` installer (2.0.18,
+  2.0.20); optional backends with `ollamadiffuser enable mlx | gguf | mcp`.
+- New endpoints: `/api/generate/video`, `/api/face/compare`, several
+  reference pictures on `/api/generate/img2img`, `control_type` on
+  `/api/generate/controlnet`.
+
 ### 🎬 Video on NVIDIA, through diffusers
 
 - **New `diffusers-video` model type** (`DiffusersVideoStrategy`): Wan and
