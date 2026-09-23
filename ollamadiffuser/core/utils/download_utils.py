@@ -246,6 +246,127 @@ def format_size(size_bytes: int) -> str:
         size_bytes /= 1024.0
     return f"{size_bytes:.1f} PB"
 
+
+def _blob_id(sibling) -> Optional[str]:
+    """The name a file's content goes by in the hub cache's ``blobs/``.
+
+    LFS files are stored under their sha256, everything else under its git
+    blob sha1 — which is to say the name *is* the content, whatever commit it
+    was downloaded at.
+    """
+    lfs = getattr(sibling, "lfs", None)
+    if lfs:
+        return lfs.get("sha256") if isinstance(lfs, dict) else getattr(lfs, "sha256", None)
+    return getattr(sibling, "blob_id", None)
+
+
+def link_from_hf_cache(
+    repo_id: str,
+    local_dir: str,
+    allow_patterns: Optional[list] = None,
+    ignore_patterns: Optional[list] = None,
+    cache_dirs: Optional[list] = None,
+    progress_callback: Optional[Callable] = None,
+) -> bool:
+    """Fill ``local_dir`` from a copy of ``repo_id`` that is already on disk.
+
+    ``pull`` downloads into ``local_dir``, and huggingface_hub does not use any
+    cache when given one — so weights that ComfyUI, mflux or ``hf download``
+    had already put in ``~/.cache/huggingface/hub`` were fetched a second time.
+    This checks that cache first: when every file the pull wants is there with
+    the right content, each is hard-linked into ``local_dir`` and nothing is
+    downloaded or copied.
+
+    Content is matched by hash, not by name: the hub cache stores each file
+    under its sha256 (LFS) or git blob id, so a blob that exists with the
+    expected size is byte-for-byte the file, whichever snapshot put it there.
+
+    Hard links rather than symlinks, so the model keeps working if the cache
+    is later cleaned (``hf cache delete``) — the data lives until the last link
+    goes. They only work within one filesystem; across disks this returns
+    False and the pull downloads as it always did. A link shares the file with
+    the cache, so nothing may write into these files in place (loaders don't).
+
+    Returns True when ``local_dir`` now holds every wanted file; False — having
+    left nothing behind — when it could not, for any reason.
+    """
+    from huggingface_hub import constants
+    from huggingface_hub.utils import filter_repo_objects
+
+    roots = []
+    for root in [constants.HF_HUB_CACHE, *(cache_dirs or [])]:
+        if root and Path(root).expanduser() not in roots:
+            roots.append(Path(root).expanduser())
+    repo_folder = "models--" + repo_id.replace("/", "--")
+    candidates = [r / repo_folder / "blobs" for r in roots if (r / repo_folder / "blobs").is_dir()]
+    if not candidates:
+        return False
+
+    try:
+        info = HfApi().repo_info(repo_id=repo_id, files_metadata=True)
+    except Exception as e:  # offline, gated without login, ... — the download path explains those
+        logger.debug(f"HF cache check skipped for {repo_id}: {e}")
+        return False
+    wanted = list(filter_repo_objects(
+        info.siblings or [], allow_patterns=allow_patterns,
+        ignore_patterns=ignore_patterns, key=lambda s: s.rfilename,
+    ))
+    if not wanted:
+        return False
+
+    for blobs in candidates:
+        sources = []
+        for sib in wanted:
+            bid = _blob_id(sib)
+            blob = blobs / bid if bid else None
+            if blob is None or not blob.exists():
+                break
+            real = Path(os.path.realpath(blob))
+            if sib.size is not None and real.stat().st_size != sib.size:
+                break
+            sources.append((sib, real))
+        else:
+            break                         # every file found in this cache
+    else:
+        return False                      # no cache holds all of them
+
+    target = Path(local_dir)
+    probe = target
+    while not probe.exists():
+        probe = probe.parent
+    if os.stat(sources[0][1]).st_dev != os.stat(probe).st_dev:
+        if progress_callback:
+            progress_callback(f"ℹ️ {repo_id} is in the Hugging Face cache, but on another "
+                              f"disk — hard links can't cross disks, downloading instead")
+        return False
+
+    made = []
+    try:
+        for sib, real in sources:
+            dst = target / sib.rfilename
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            if dst.exists():
+                if os.path.samefile(dst, real):
+                    continue
+                dst.unlink()              # a partial or older file from an earlier pull
+            os.link(real, dst)
+            made.append(dst)
+    except OSError as e:
+        for dst in made:
+            try:
+                dst.unlink()
+            except OSError:
+                pass
+        logger.warning(f"Could not link {repo_id} from the HF cache ({e}); downloading instead")
+        return False
+
+    total = sum(real.stat().st_size for _, real in sources)
+    if progress_callback:
+        progress_callback(f"♻️ {repo_id} was already in the Hugging Face cache ({blobs.parent.parent}): "
+                          f"linked {len(sources)} files, {format_size(total)}, nothing downloaded")
+    logger.info(f"Linked {repo_id} from the HF cache: {len(sources)} files, {format_size(total)}")
+    return True
+
 def robust_snapshot_download(
     repo_id: str,
     local_dir: str,
@@ -275,7 +396,17 @@ def robust_snapshot_download(
         Path to downloaded repository
     """
     configure_hf_environment()
-    
+
+    # Weights another tool already downloaded are linked, not fetched again.
+    # --force means "fetch it again", so it skips this.
+    if not force_download and link_from_hf_cache(
+        repo_id, local_dir,
+        allow_patterns=allow_patterns, ignore_patterns=ignore_patterns,
+        cache_dirs=[cache_dir] if cache_dir else None,
+        progress_callback=progress_callback,
+    ):
+        return local_dir
+
     # Get file list and sizes for progress tracking
     if progress_callback:
         progress_callback("pulling manifest")

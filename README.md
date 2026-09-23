@@ -142,6 +142,7 @@ Most models work **without any token** -- just install and go. See [Hugging Face
   - **MLX backend** via [mflux](https://github.com/filipstrand/mflux) — 23 native MLX entries (FLUX.1 family, FLUX.2 Klein, Z-Image, Qwen-Image, Kontext, Fill, Redux, Depth, ControlNet, and since v2.0.21 Krea 2, Boogu, ERNIE-Image, Lens, Ideogram 4, FIBO, FIBO-Edit, SeedVR2). Typically **2-3× faster** than the PyTorch + MPS path on M-series.
   - **PyTorch + MPS** — full diffusers pipeline support with per-model dtype handling (float16/bfloat16, NaN sanitization), GGUF Metal acceleration, and `ollamadiffuser recommend` for hardware-aware model suggestions.
 - **📦 Smart Downloads**: `ollamadiffuser pull` downloads only diffusers pipeline files — skips root-level checkpoints, ONNX/Flax exports, and safety_checker. Saves 10–200 GB per model.
+- **♻️ Reuses what's already downloaded**: if a model is already in the Hugging Face cache (from ComfyUI, mflux, `hf download`…), `ollamadiffuser pull` hard-links it instead of downloading — seconds instead of tens of GB, and no second copy on disk.
 - **📦 GGUF Support**: Memory-efficient quantized models (3GB VRAM minimum!) with CUDA and Metal acceleration
 - **🌐 Multiple Interfaces**: CLI, Python API, Web UI, and REST API
 - **📦 Model Management**: Easy installation and switching between models

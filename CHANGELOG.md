@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ♻️ `pull` uses weights that are already on disk
+
+- **`pull` checks the Hugging Face cache before downloading.** It has always
+  downloaded into `~/.ollamadiffuser/models/<name>` with huggingface_hub's
+  `local_dir`, and with `local_dir` huggingface_hub uses no cache at all — so
+  a model already fetched by ComfyUI, mflux or `hf download` into
+  `~/.cache/huggingface/hub` was downloaded a second time. Now, when every
+  file the pull wants is in that cache, each one is **hard-linked** into the
+  model directory: no download, no copy, no extra disk.
+- Files are matched by content, not name: the cache stores each file under
+  its sha256 (LFS) or git blob id, so a blob with that name and the expected
+  size is the file, whichever snapshot put it there. `allow_patterns` /
+  `ignore_patterns` decide what is needed, exactly as for a download.
+- Hard links, not symlinks, so the model survives `hf cache delete`. They
+  can't cross disks: when the cache and the models directory are on
+  different volumes, or anything is missing or the wrong size, or the file
+  list can't be fetched, the pull downloads exactly as before and leaves
+  nothing half-linked. `--force` skips the cache.
+- **Measured on the M3 Ultra**: `pull qwen-image-2.1-mlx` with the repo
+  already in the HF cache — 1 s, 27 files / 30.9 GB linked, 0 MB of disk
+  used (it would have been a 33 GB download). The pulled model then loaded
+  through `model_manager` and generated in 111 s.
+
 ### 🖼️ Qwen-Image-2.1, through mflux
 
 - **`qwen-image-2.1-mlx`** — Qwen's September 2026 model, on Apple Silicon.
