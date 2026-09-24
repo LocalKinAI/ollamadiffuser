@@ -6,6 +6,10 @@
 
 ## 🆕 What's New
 
+### v2.1.1 — ComfyUI nodes
+
+Three nodes that let a ComfyUI workflow use OllamaDiffuser's models — Qwen-Image-2.1, FLUX.2 klein, Kontext, Boogu, LTX-2 on MLX — as ordinary `IMAGE` / `VIDEO` steps, through the HTTP API, with no second copy of the weights. See [ComfyUI Nodes](#comfyui-nodes).
+
 ### v2.1.0 — video and LoRAs on every platform, 40 more models
 
 The first PyPI release since 2.0.17, so it also brings 2.0.18–2.0.26 below to `pip`. Full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -146,6 +150,7 @@ Most models work **without any token** -- just install and go. See [Hugging Face
 - **🎛️ ControlNet Support**: Precise image generation control with 10+ control types (PyTorch + MLX)
 - **🔄 LoRA Integration**: Dynamic LoRA loading and management
 - **🔌 MCP & OpenClaw**: Model Context Protocol server for AI assistant integration (OpenClaw, Claude Code, Cursor)
+- **🧩 ComfyUI nodes**: draw, edit and film with OllamaDiffuser's models from inside a ComfyUI graph (`integrations/comfyui/`)
 - **🍎 Apple Silicon, two paths**:
   - **MLX backend** via [mflux](https://github.com/filipstrand/mflux) — 33 native MLX entries (FLUX.1 family, FLUX.1 Krea, FLUX.2 Klein, Z-Image, Qwen-Image, Kontext, Fill, Redux, Depth, ControlNet, and since v2.0.21 Krea 2, Boogu, ERNIE-Image, Lens, Ideogram 4, FIBO, FIBO-Edit, SeedVR2). Typically **2-3× faster** than the PyTorch + MPS path on M-series.
   - **PyTorch + MPS** — full diffusers pipeline support with per-model dtype handling (float16/bfloat16, NaN sanitization), GGUF Metal acceleration, and `ollamadiffuser recommend` for hardware-aware model suggestions.
@@ -687,6 +692,16 @@ ollamadiffuser mcp
 ### OpenClaw AgentSkill
 
 An [OpenClaw](https://github.com/openclaw/openclaw) skill is included at `integrations/openclaw/SKILL.md`. It uses the REST API with `response_format=b64_json` for agent-friendly base64 image responses. Copy the skill directory to your OpenClaw skills folder or publish to ClawHub.
+
+### ComfyUI Nodes
+
+Three custom nodes at [`integrations/comfyui/`](integrations/comfyui/) bring OllamaDiffuser's models into a ComfyUI graph — **Text to Image**, **Edit Image** (up to four references) and **Video** (first frame, audio, a control video to follow, LoRA). ComfyUI can't read the MLX builds, so the nodes don't load anything: they call OllamaDiffuser's HTTP API and hand back an ordinary `IMAGE` or `VIDEO` for the rest of the graph. A server already running the model is reused; otherwise one is started, after ComfyUI's own models are unloaded, and stopped again afterwards unless `keep_loaded` is on.
+
+```bash
+ln -s /path/to/ollamadiffuser/integrations/comfyui ~/ComfyUI/custom_nodes/comfyui-ollamadiffuser
+```
+
+The nodes live in the GitHub repository, not in the pip package — clone the repo, or download the folder, to install them.
 
 ### Base64 JSON API Response
 

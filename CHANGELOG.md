@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-09-23
+
+### 🧩 ComfyUI nodes
+
+- **`integrations/comfyui/`** — a ComfyUI custom-node pack with three nodes:
+  **OllamaDiffuser · Text to Image** (`POST /api/generate`), **Edit Image**
+  (`POST /api/generate/img2img`, with up to three extra references for
+  editors that take several) and **Video** (`POST /api/generate/video`: a
+  first frame, an audio track, a control video to follow, a LoRA).
+- ComfyUI runs PyTorch and cannot read OllamaDiffuser's MLX conversions, and
+  converting them back would duplicate tens of gigabytes already on disk. So
+  the nodes load nothing: they ask an OllamaDiffuser server for the picture or
+  clip and hand it on as an ordinary `IMAGE` or `VIDEO`.
+- A server already running the model, on any port from 8000 to 8019, is used
+  as it is and left as it was. Otherwise the node asks ComfyUI to unload its
+  own models, starts `ollamadiffuser run <model>` on a free port from 8010,
+  and shuts it down afterwards unless `keep_loaded` is on. The model list is
+  cached and refreshed in the background, because ComfyUI's page waits for it.
+- Install by linking the folder into ComfyUI's `custom_nodes`. It lives in
+  the repository, not in the pip package. The server is unchanged: the nodes
+  use endpoints 2.1.0 already has.
+
 ## [2.1.0] - 2026-09-23
 
 The first PyPI release since **2.0.17**. Versions 2.0.18 to 2.0.26 below were
