@@ -580,7 +580,8 @@ The same commands work on `-mlx` models. mflux takes a LoRA when the model is bu
 or unloading one rebuilds the model with it baked in, and costs nothing per step afterwards.
 Measured on an M3 Ultra with FLUX.2 klein 4B: 45 s to load the LoRA the first time, most of it
 the 325 MB download; 0.3 s to unload it. LoRAs stack: load a speed LoRA and a style LoRA and
-both apply.
+both apply. The rebuild releases the old weights before it reads the new ones, and refuses — with
+a sentence saying how much it needs — when the Mac has no room for one more copy.
 
 ```bash
 ollamadiffuser lora pull Limbicnation/pixel-art-lora -w pytorch_lora_weights.safetensors -a pixel
@@ -592,7 +593,10 @@ Qwen-Image, Qwen-Image-2.1 (generation, edit and ControlNet), Krea 2, ERNIE-Imag
 Ideogram 4, FIBO, Ming-Image and SeedVR2 don't in mflux yet, and say so.
 
 **Qwen-Image-2.1 in 6 steps** — Viggle's turbo LoRA with mflux's matching scheduler, for
-generation and editing alike:
+generation and editing alike. Measured on an M3 Ultra at 1024×1024: about 27 s per image
+(37 s for the first) against 110 s for 25 steps without it, with the sign's Chinese text still
+right. The Qwen-Image-2.1 entries keep LoRAs as live adapters (`bake_lora: false`): baked into the
+8-bit weights, this one lost more than half its effect.
 
 ```bash
 ollamadiffuser lora pull Viggle/Qwen-Image-2.1-viggle-turbo \

@@ -737,6 +737,44 @@ class TestLoRA:
         assert _FakeMflux.built[-1]["lora_paths"] == [str(good)]
         assert s.is_loaded
 
+    def test_a_rebuild_that_would_not_fit_is_refused_and_the_model_restored(
+            self, lora_strategy, tmp_path, monkeypatch, caplog):
+        """On the box a rebuild that kept the old weights ran the machine out
+        of memory (watchdog panic). Not enough room now means no build."""
+        from ollamadiffuser.core.inference.strategies import mlx_strategy as ms
+        s, _ = lora_strategy
+        memory = iter([(40e9, 20e9), (0, 0), (0, 0), (0, 0)])
+        monkeypatch.setattr(ms, "_mlx_memory", lambda: next(memory))
+        monkeypatch.setattr(ms, "_available_memory", lambda: 30e9)
+        builds = len(_FakeMflux.built)
+        with caplog.at_level("ERROR"):
+            assert s.load_lora_runtime(str(_lora_file(tmp_path))) is False
+        assert any("Not enough free memory" in r.message for r in caplog.records)
+        # The refused build never ran; the restore rebuilt the model without the LoRA.
+        assert len(_FakeMflux.built) == builds + 1
+        assert _FakeMflux.built[-1]["lora_paths"] is None
+        assert s.is_loaded
+
+    def test_a_rebuild_with_room_goes_ahead(self, lora_strategy, tmp_path, monkeypatch):
+        from ollamadiffuser.core.inference.strategies import mlx_strategy as ms
+        s, _ = lora_strategy
+        memory = iter([(40e9, 20e9), (0, 0)])
+        monkeypatch.setattr(ms, "_mlx_memory", lambda: next(memory))
+        monkeypatch.setattr(ms, "_available_memory", lambda: 60e9)
+        assert s.load_lora_runtime(str(_lora_file(tmp_path))) is True
+
+    def test_mlx_cache_is_released_after_each_image(self, lora_strategy, monkeypatch):
+        from ollamadiffuser.core.inference.strategies import mlx_strategy as ms
+        s, _ = lora_strategy
+        released = []
+        monkeypatch.setattr(ms, "_release_mlx_memory", lambda: released.append(1))
+        monkeypatch.delenv("OLLAMADIFFUSER_MLX_KEEP_CACHE", raising=False)
+        s.generate("p")
+        assert released == [1]
+        monkeypatch.setenv("OLLAMADIFFUSER_MLX_KEEP_CACHE", "1")
+        s.generate("p")
+        assert released == [1]
+
     def test_family_without_loras_says_so(self, tmp_path, caplog):
         s = MLXStrategy()
         with patch("ollamadiffuser.core.inference.strategies.mlx_strategy.is_apple_silicon",
@@ -914,6 +952,15 @@ class TestEditors:
         s.generate("p")
         call = _FakeQwen21.calls[-1]
         assert call["scheduler"] == "linear" and call["use_step_cache"] is False
+
+    def test_an_edit_without_strength_keeps_the_models_default(self, tmp_path):
+        """strength=None reached QwenImage21Edit and failed comparing it with 1."""
+        _FakeQwen21.calls = []
+        s = _load_fake(_FakeQwen21, "qwen21-edit", "qwen-image-2.1")
+        pic = tmp_path / "in.png"
+        Image.new("RGB", (64, 64)).save(pic)
+        s.generate("make it night", image=str(pic))
+        assert _FakeQwen21.calls[-1]["strength"] == 1.0
 
     def test_a_call_overrides_the_registry_scheduler(self, tmp_path):
         _FakeQwen21.calls = []

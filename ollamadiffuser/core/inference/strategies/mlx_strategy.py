@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
+import os
 import platform
 from pathlib import Path
 import random
@@ -121,6 +122,10 @@ _INIT_EXTRAS = {
     # Ming-Image: its 16B MoE text encoder quantized on its own.
     "text_encoder_quantize": int,
     "low_ram": bool,
+    # LoRAs are baked into the weights by default (no cost per step). False
+    # keeps them as live adapters, which skips mflux's fold through the
+    # unquantized weights — see the Qwen-Image-2.1 entries.
+    "bake_lora": bool,
 }
 
 # Registry parameters handed to generate_image() when it takes them, unless
@@ -166,6 +171,41 @@ _VALID_QUANTIZE = (None, 4, 8)
 def is_apple_silicon() -> bool:
     """Return True iff we're running on macOS arm64."""
     return platform.system() == "Darwin" and platform.machine() == "arm64"
+
+
+def _mlx_memory() -> tuple:
+    """(bytes MLX holds for arrays, bytes it caches for reuse); zeros without mlx."""
+    try:
+        import mlx.core as mx
+        return mx.get_active_memory(), mx.get_cache_memory()
+    except Exception:
+        return 0, 0
+
+
+def _release_mlx_memory() -> None:
+    """Give MLX's freed buffers back to the system.
+
+    MLX keeps the buffers of arrays it has freed in a cache for reuse, and
+    returns them only when asked. Measured on the M3 Ultra with
+    Qwen-Image-2.1 at 8 bits: one 512px image left 23.7 GB of weights in use
+    and 20.9 GB cached; dropping the model moved the weights to the cache
+    (37.3 GB) without returning a byte. Waiting for the GPU first matters:
+    arrays still referenced by queued work are freed only when it completes.
+    """
+    try:
+        import mlx.core as mx
+        mx.synchronize()
+        mx.clear_cache()
+    except Exception as e:
+        logger.debug(f"Could not clear the MLX cache: {e}")
+
+
+def _available_memory() -> Optional[int]:
+    try:
+        import psutil
+        return psutil.virtual_memory().available
+    except Exception:
+        return None
 
 
 def looks_like_model_dir(path: Optional[str]) -> bool:
@@ -695,11 +735,16 @@ class MLXStrategy(InferenceStrategy):
         except (TypeError, ValueError):
             accepted = set(candidate_kwargs.keys())  # fall back to everything
 
+        # A None is never passed: it would replace the model's own default —
+        # Qwen-Image-2.1's edit compares strength (default 1.0) with a number,
+        # and its scheduler must be a name — rather than mean "not set".
         gen_kwargs = {}
         for key, val in candidate_kwargs.items():
+            if val is None:
+                continue
             if key in accepted:
                 gen_kwargs[key] = val
-            elif val not in (None, ""):
+            elif val != "":
                 logger.debug(
                     f"MLX variant {self._variant!r} doesn't accept "
                     f"{key!r}={val!r}; dropping."
@@ -717,6 +762,11 @@ class MLXStrategy(InferenceStrategy):
         except Exception as e:
             logger.error(f"MLX generation failed: {e}", exc_info=True)
             return self._create_error_image(str(e), prompt)
+        finally:
+            # An idle server should hold its model, not the generation's
+            # scratch buffers — on the box that was 21 GB more, and a server
+            # shares the machine with everything else running.
+            self._after_generation()
 
         # Some seeds come back as undenoised latents: a valid, full-size PNG
         # of coloured confetti. Measured on FLUX.1-Kontext int8 with one
@@ -738,6 +788,8 @@ class MLXStrategy(InferenceStrategy):
             except Exception as e:
                 logger.error(f"MLX retry failed: {e}", exc_info=True)
                 return self._create_error_image(str(e), prompt)
+            finally:
+                self._after_generation()
             if not self.looks_like_noise(image):
                 return image
         raise RuntimeError(
@@ -803,6 +855,9 @@ class MLXStrategy(InferenceStrategy):
         self._variant = None
         self._build_args = None
         self._loras = []
+        import gc
+        gc.collect()
+        _release_mlx_memory()
         logger.info("MLX model unloaded")
 
     # ----- LoRA ---------------------------------------------------------
@@ -846,15 +901,48 @@ class MLXStrategy(InferenceStrategy):
         except (TypeError, ValueError):
             return False
 
+    def _after_generation(self) -> None:
+        if os.environ.get("OLLAMADIFFUSER_MLX_KEEP_CACHE"):
+            return
+        try:
+            self._mlx_call(_release_mlx_memory)
+        except Exception:
+            pass
+
     def _rebuild(self, loras: list) -> None:
         """Replace the model with one built with ``loras``. Raises on failure,
-        with no model loaded."""
+        with no model loaded.
+
+        The old weights must be gone before the new ones are read: two copies
+        of a 20B model do not fit, and on the M3 Ultra — sharing its 96 GB with
+        Ollama's 22 GB — a rebuild that kept them took the machine down with a
+        watchdog panic. So the old model is released and MLX's cache emptied,
+        and the build goes ahead only when the system can hold another copy.
+        """
         import gc
 
-        # Let the old weights go first: two copies of a 20B model do not fit.
+        held, cached = _mlx_memory()
         self._mlx_model = None
         self.pipeline = None
         gc.collect()
+        self._mlx_call(_release_mlx_memory)
+        gc.collect()
+        still, _ = _mlx_memory()
+        available = _available_memory()
+        # What the new build will need: the weights the old one held.
+        needed = max(held - still, 0)
+        logger.info(
+            f"Rebuilding: MLX held {held / 1e9:.1f} GB (+{cached / 1e9:.1f} GB cache), "
+            f"{still / 1e9:.1f} GB after release; "
+            f"{(available or 0) / 1e9:.1f} GB available for ~{needed / 1e9:.1f} GB"
+        )
+        if available is not None and needed and available < needed * 1.15 + 2e9:
+            raise MemoryError(
+                f"Not enough free memory to rebuild the model with this LoRA: it needs about "
+                f"{needed / 1e9:.0f} GB and {available / 1e9:.0f} GB is free. Close other "
+                f"programs holding memory (another model server, Ollama, ComfyUI) and load "
+                f"the model again."
+            )
         self._mlx_model = self._construct(loras)
         self.pipeline = self._mlx_model
         self._loras = list(loras)

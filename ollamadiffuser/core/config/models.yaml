@@ -626,6 +626,10 @@ models:
       # guidance > 1 AND a negative prompt is given, and the engine always
       # sends one — so raising this doubles the time per step.
       guidance_scale: 1.0
+      # LoRAs as live adapters: baked into these 8-bit weights, Viggle's turbo
+      # LoRA kept 42% of its update (mflux's own count) and the sign it drew
+      # came out warped; live, the text stayed straight, for ~3 s and 1.4 GB more.
+      bake_lora: false
     hardware_requirements:
       min_vram_gb: 46
       recommended_vram_gb: 64
@@ -718,6 +722,10 @@ models:
       num_inference_steps: 40
       # Guidance-free, as for generation: mflux refuses guidance below 1.
       guidance_scale: 1.0
+      # LoRAs as live adapters: baked into these 8-bit weights, Viggle's turbo
+      # LoRA kept 42% of its update (mflux's own count) and the sign it drew
+      # came out warped; live, the text stayed straight, for ~3 s and 1.4 GB more.
+      bake_lora: false
     hardware_requirements:
       min_vram_gb: 46
       recommended_vram_gb: 64
@@ -747,6 +755,10 @@ models:
       quantize: 8
       num_inference_steps: 40
       guidance_scale: 1.0
+      # LoRAs as live adapters: baked into these 8-bit weights, Viggle's turbo
+      # LoRA kept 42% of its update (mflux's own count) and the sign it drew
+      # came out warped; live, the text stayed straight, for ~3 s and 1.4 GB more.
+      bake_lora: false
     hardware_requirements:
       min_vram_gb: 46
       recommended_vram_gb: 64

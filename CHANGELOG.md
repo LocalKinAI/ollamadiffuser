@@ -31,17 +31,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `scheduler` reaches mflux — from the registry, from `generate()`, and as a
   field on `/api/generate` and `/api/generate/img2img`. With Viggle's turbo
   LoRA and `scheduler=viggle_turbo` it draws in 6 steps instead of 40.
-  **Measured on the M3 Ultra**: a 1024×1024 image in 6 steps took 42.7 s at a
-  39.1 GB peak, with the 1.36 GB LoRA loaded in 50.9 s, download included.
+  **Measured on the M3 Ultra**, 1024×1024, mflux 0.22, 8-bit:
+
+  | | time per image | MLX peak |
+  |---|---|---|
+  | 25 steps, no LoRA | 110.3 s | 39.2 GB |
+  | 6 steps, Viggle LoRA as a live adapter (the default here) | 36.7 s, then 27.3 s | 40.5 GB |
+  | 6 steps, Viggle LoRA baked in (`bake_lora: true`) | 27.1 s, then 24.2 s | 39.1 GB |
+
+  The Qwen-Image-2.1 entries keep LoRAs as live adapters (`bake_lora:
+  false`): baked into the 8-bit weights the turbo LoRA kept 42% of its
+  update — mflux counts it and says so — and the sign it drew came out
+  twisted, while the live adapter kept the text straight. 0.22 itself ran
+  the 25-step image no faster than 0.20 did (104–112 s), but 6.6 GB lighter.
+- **The Qwen-Image-2.1 edit, measured**: "turn the scene into a snowy winter
+  night; keep the cabin, the sign and its text", 1024×1024, 40 steps —
+  227.5 s at a 31.7 GB peak, RGBA out. The cabin, the framing and 海边小屋 on
+  the sign stayed; snow, night and snowfall arrived.
 - Constructor knobs mflux added are passed when an entry sets them:
   `compute_precision: float16` (attention and feed-forward in float16 on
   klein, Z-Image and Qwen-Image-2.1, 7–29% faster per mflux) and Ming's
-  `text_encoder_quantize`. A knob nobody set is not passed at all: an
-  explicit `scheduler=None` is an error in Qwen-Image-2.1, not its default —
-  which the box run caught before release.
+  `text_encoder_quantize`, and `bake_lora` (false keeps a LoRA as a live
+  adapter). A value nobody set is never passed: `scheduler=None` is an error
+  in Qwen-Image-2.1 and `strength=None` breaks its edit, where leaving them
+  out gives the defaults — both caught on the box before release.
 
 ### 🔧 Fixed
 
+- **Loading a LoRA on a Mac could run the machine out of memory.** It took
+  the M3 Ultra down with a watchdog panic: free memory at zero, 58 GB in the
+  compressor, while Qwen-Image-2.1 was rebuilt with Viggle's LoRA next to
+  Ollama's 22 GB. Measured afterwards: one 512px image left 23.7 GB of
+  weights in use and 20.9 GB in MLX's buffer cache, and dropping the model
+  moved the weights into that cache (37.3 GB) without giving any back — MLX
+  returns cached buffers only when asked. So the rebuild read a second copy
+  on top of the first. Now the old model is released, the GPU drained and the
+  cache emptied before the rebuild, and the rebuild goes ahead only if the
+  system has room for the weights it is about to read; otherwise it refuses
+  with a sentence naming what to close.
+- **An idle MLX server held its last generation's scratch memory.** The cache
+  is now emptied after every image, so a server between requests holds its
+  model and not ~21 GB more (at 512px; more at larger sizes). It cost no
+  time: four 512px images ran 11.0, 8.0 s with the cache kept and 5.0, 4.1 s
+  with it emptied first. `OLLAMADIFFUSER_MLX_KEEP_CACHE=1` keeps it.
 - **`qwen-image-edit-mlx` didn't edit.** It built `QwenImage` — mflux's
   text-to-image class — around the edit weights, so a picture was redrawn
   rather than edited, and a test since 2.0.16 pinned that. It now builds
