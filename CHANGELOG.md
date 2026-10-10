@@ -25,6 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`qwen-image-edit-2511-mlx`** — Qwen-Image-Edit-2511 at 8 bits on a Mac,
   now that mflux reads its references at timestep 0 as the checkpoint
   expects.
+- **`qwen-image-2.1-turbo-mlx`** — Qwen's official 8-step distillation
+  (2026-10-09), which mflux has no entry for. It is Qwen-Image-2.1's
+  transformer with a fixed table of 8 noise levels in its `model_index.json`
+  (`sample_sigmas`); built as mflux's qwen-image-2.1 from its own folder, it
+  is sampled on that table by a scheduler registered with mflux
+  (`strategies/mflux_sample_sigmas.py`): the nodes as given — its scheduler
+  config has shift 1.0 and no dynamic shifting — then 0, with mflux's Euler
+  step. Any qwen21 checkpoint that ships a table gets it, unless an entry or
+  a call names a scheduler. Text-to-image only: mflux's 2.1 editor accepts
+  only its own schedules. Not run yet — the 32.4 GB download shares no file
+  with the base model.
 - **`ming-image-design-mlx`** — inclusionAI's Ming-Image-0.1-Design: UI,
   posters and infographics, with transparent backgrounds. 12 steps, MIT.
 - **Qwen-Image-2.1 takes LoRAs** through the MLX LoRA path, and a new

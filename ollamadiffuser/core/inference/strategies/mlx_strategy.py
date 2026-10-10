@@ -128,6 +128,12 @@ _INIT_EXTRAS = {
     "bake_lora": bool,
 }
 
+# Families whose checkpoints may ship their own fixed schedule as
+# model_index.json "sample_sigmas" (Qwen-Image-2.1-Turbo), which then replaces
+# mflux's default unless an entry or a call names a scheduler. Not the 2.1
+# editor: mflux accepts only its own schedules there.
+_SAMPLE_SIGMA_VARIANTS = frozenset({"qwen21"})
+
 # Registry parameters handed to generate_image() when it takes them, unless
 # the call names its own value.
 _GENERATE_EXTRAS = ("scheduler", "step_cache_ratio", "use_step_cache", "output_resolution",
@@ -256,6 +262,9 @@ class MLXStrategy(InferenceStrategy):
         self._mlx_model = None
         # Cached for capability checks in generate() (e.g. Kontext needs image).
         self._variant: Optional[str] = None
+        # (mflux scheduler name, step count) when the checkpoint ships its own
+        # sigma table — see mflux_sample_sigmas.
+        self._fixed_schedule: Optional[tuple] = None
         # What load() built the model from — (class, quantize, mflux config,
         # local dir) — so a LoRA change can build it again.
         self._build_args: Optional[tuple] = None
@@ -356,6 +365,16 @@ class MLXStrategy(InferenceStrategy):
             logger.info(f"Using the downloaded weights at {local_dir}")
         self._build_args = (model_cls, quantize, mflux_config, local_dir,
                             self._init_extras(model_cls, params))
+        self._fixed_schedule = None
+        if variant in _SAMPLE_SIGMA_VARIANTS and not params.get("scheduler"):
+            from .mflux_sample_sigmas import read_sample_sigmas, register
+            nodes = read_sample_sigmas(local_dir)
+            if nodes:
+                try:
+                    self._fixed_schedule = (register(nodes), len(nodes))
+                    logger.info(f"Sampling on the checkpoint's own {len(nodes)}-step schedule")
+                except ImportError as e:
+                    logger.warning(f"Could not register the checkpoint's schedule with mflux: {e}")
         self._loras = []
         try:
             self._mlx_model = self._construct([])
@@ -628,6 +647,16 @@ class MLXStrategy(InferenceStrategy):
             else float(params.get("guidance_scale", 0.0))
         )
 
+        # A checkpoint with its own schedule runs its own step count — as
+        # diffusers does with sample_sigmas — unless the call names another
+        # scheduler.
+        fixed_scheduler = None
+        if self._fixed_schedule and not kwargs.get("scheduler"):
+            fixed_scheduler, fixed_steps = self._fixed_schedule
+            if steps != fixed_steps:
+                logger.info(f"{fixed_steps} steps, the checkpoint's own schedule (asked for {steps})")
+            steps = fixed_steps
+
         # Seed (mflux requires an explicit int — no None allowed).
         used_seed = seed if seed is not None else random.randint(0, 2**31 - 1)
 
@@ -727,6 +756,8 @@ class MLXStrategy(InferenceStrategy):
                 value = params.get(key)
             if value is not None:
                 candidate_kwargs[key] = value
+        if fixed_scheduler:
+            candidate_kwargs["scheduler"] = fixed_scheduler
         try:
             import inspect
             accepted = set(
@@ -855,6 +886,7 @@ class MLXStrategy(InferenceStrategy):
         self._variant = None
         self._build_args = None
         self._loras = []
+        self._fixed_schedule = None
         import gc
         gc.collect()
         _release_mlx_memory()

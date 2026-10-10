@@ -1026,7 +1026,10 @@ class TestRegistryPullsWhatMfluxLoads:
             if variant not in mlx_strategy._ALIAS_ROUTED and variant != "qwen-image":
                 continue
             resolved = ModelConfig.from_name(params["mlx_model_name"]).model_name
-            assert cfg["repo_id"] == resolved, (
+            # Another checkpoint of an architecture mflux knows (Qwen-Image-2.1-Turbo)
+            # is built as that architecture from its own downloaded folder.
+            expected = params.get("same_architecture_as", cfg["repo_id"])
+            assert expected == resolved, (
                 f"{name}: pull fetches {cfg['repo_id']!r} but mflux loads "
                 f"{resolved!r} for alias {params['mlx_model_name']!r}"
             )

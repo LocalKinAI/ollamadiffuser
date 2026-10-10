@@ -647,6 +647,41 @@ models:
       type: Qwen Research License (non-commercial)
       requires_agreement: false
       commercial_use: false
+  qwen-image-2.1-turbo-mlx:
+    # Qwen's own 8-step distillation (2026-10-09): the same transformer as
+    # Qwen-Image-2.1, with a fixed table of 8 noise levels in model_index.json
+    # (sample_sigmas). mflux has no entry for it, so it is built as mflux's
+    # qwen-image-2.1 from this folder, and MLXStrategy samples it on that
+    # table (strategies/mflux_sample_sigmas.py). Text-to-image only: mflux's
+    # 2.1 editor accepts only its own schedules.
+    repo_id: Qwen/Qwen-Image-2.1-Turbo
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: qwen21
+      mlx_model_name: qwen-image-2.1
+      same_architecture_as: Qwen/Qwen-Image-2.1
+      quantize: 8
+      # The checkpoint's table decides the step count; 8 is what it holds.
+      num_inference_steps: 8
+      guidance_scale: 1.0
+      bake_lora: false
+    hardware_requirements:
+      min_vram_gb: 46
+      recommended_vram_gb: 64
+      min_ram_gb: 64
+      recommended_ram_gb: 96
+      disk_space_gb: 33
+      supported_devices:
+      - MPS
+      performance_notes: Qwen-Image-2.1-Turbo at 8-bit MLX — Qwen's official 8-step distillation of
+        Qwen-Image-2.1, sampled on the schedule it ships with. Its card shows 2048-class images
+        (1680x2512, 2048x2048). For edits in few steps on a Mac, use qwen-image-2.1-edit-mlx with
+        Viggle's turbo LoRA. Research licence.
+    license_info:
+      type: Qwen Research License (non-commercial)
+      requires_agreement: false
+      commercial_use: false
   qwen-image-edit-mlx:
     # Same story: mflux's `qwen-image-edit` alias is the 2509 checkpoint.
     # mlx_variant qwen-image-edit is mflux's editor class, which takes the

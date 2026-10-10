@@ -10,7 +10,7 @@
 
 - **Edit with Qwen-Image-2.1 on Apple Silicon.** `qwen-image-2.1-edit-mlx` takes up to ten reference pictures, a mask, an edit strength and prompt rewriting, from the same weights as `qwen-image-2.1-mlx`. Its ControlNet (`qwen-image-2.1-controlnet-mlx`: canny, depth, pose and five more, plus inpainting) and Qwen-Image-Edit-2511 (`qwen-image-edit-2511-mlx`) run natively too. Needs mflux 0.22, now the minimum.
 - **Qwen-Image-2.1 in 6 steps.** Load Viggle's turbo LoRA and pass `scheduler=viggle_turbo` — see [LoRAs on Apple Silicon](#loras-on-apple-silicon-mlx-models).
-- **New:** `ming-image-design-mlx` (UI, posters and infographics with transparent backgrounds, MIT) and, on NVIDIA through diffusers 0.41, `qwen-image-2.1` and Qwen's own 8-step `qwen-image-2.1-turbo`.
+- **New:** `ming-image-design-mlx` (UI, posters and infographics with transparent backgrounds, MIT); Qwen's own 8-step **Qwen-Image-2.1-Turbo** on both platforms — `qwen-image-2.1-turbo-mlx` (sampled on the schedule the checkpoint ships with; mflux has no entry for it yet) and `qwen-image-2.1-turbo` through diffusers 0.41 — and `qwen-image-2.1` on NVIDIA.
 - **Fixed:** `qwen-image-edit-mlx` redrew the picture instead of editing it — it was built as the text-to-image class. The MCP server didn't start with mcp 2.x, which `ollamadiffuser enable mcp` installs.
 - **Better:** `pull` links files another installed entry already downloaded from the same repo, so an editor next to its generator costs no second download. `ollamadiffuser ps` lists every running server, not just the last one started. MCP's `generate_image` also returns the saved file's path as text, and uses a running server that already holds the model instead of loading a second copy.
 
@@ -160,7 +160,7 @@ Most models work **without any token** -- just install and go. See [Hugging Face
 - **🔌 MCP & OpenClaw**: Model Context Protocol server for AI assistant integration (OpenClaw, Claude Code, Cursor)
 - **🧩 ComfyUI nodes**: draw, edit and film with OllamaDiffuser's models from inside a ComfyUI graph (`integrations/comfyui/`)
 - **🍎 Apple Silicon, two paths**:
-  - **MLX backend** via [mflux](https://github.com/filipstrand/mflux) — 37 native MLX entries (FLUX.1 family, FLUX.1 Krea, FLUX.2 Klein, Z-Image, Qwen-Image, Qwen-Image-2.1 with editing and a ControlNet, Kontext, Fill, Redux, Depth, ControlNet, and since v2.0.21 Krea 2, Boogu, ERNIE-Image, Lens, Ideogram 4, FIBO, FIBO-Edit, SeedVR2, Ming-Image). Typically **2-3× faster** than the PyTorch + MPS path on M-series.
+  - **MLX backend** via [mflux](https://github.com/filipstrand/mflux) — 38 native MLX entries (FLUX.1 family, FLUX.1 Krea, FLUX.2 Klein, Z-Image, Qwen-Image, Qwen-Image-2.1 with editing and a ControlNet, Kontext, Fill, Redux, Depth, ControlNet, and since v2.0.21 Krea 2, Boogu, ERNIE-Image, Lens, Ideogram 4, FIBO, FIBO-Edit, SeedVR2, Ming-Image). Typically **2-3× faster** than the PyTorch + MPS path on M-series.
   - **PyTorch + MPS** — full diffusers pipeline support with per-model dtype handling (float16/bfloat16, NaN sanitization), GGUF Metal acceleration, and `ollamadiffuser recommend` for hardware-aware model suggestions.
 - **📦 Smart Downloads**: `ollamadiffuser pull` downloads only diffusers pipeline files — skips root-level checkpoints, ONNX/Flax exports, and safety_checker. Saves 10–200 GB per model.
 - **♻️ Reuses what's already downloaded**: if a model is already in the Hugging Face cache (from ComfyUI, mflux, `hf download`…), `ollamadiffuser pull` hard-links it instead of downloading — seconds instead of tens of GB, and no second copy on disk.
@@ -427,6 +427,7 @@ MLX entries run through [mflux](https://github.com/filipstrand/mflux) on Apple S
 | `z-anime-mlx` | Z-Anime (anime fine-tune of Z-Image base) | Q8 | 8 GB | 12 GB | Apache 2.0 |
 | `qwen-image-mlx` | Qwen-Image (20B) | Q8 | 22 GB | 24 GB | Apache 2.0 |
 | `qwen-image-2.1-mlx` | Qwen-Image-2.1 (mflux 0.20+) | Q8 | 34 GB | 64 GB (measured 45.8 GB peak) | Qwen Research (non-commercial) |
+| `qwen-image-2.1-turbo-mlx` | Qwen-Image-2.1-Turbo (official 8-step, text-to-image) | Q8 | 33 GB | 64 GB | Qwen Research (non-commercial) |
 | `ming-image-design-mlx` | Ming-Image-0.1-Design (6B, RGBA, 12 steps) | Q8 | 53 GB | 64 GB | MIT |
 | `boogu-image-turbo-mlx` | Boogu Image (10B, 4-step DMD) | Q8 | 12 GB | 16 GB | Apache 2.0 |
 | `ernie-image-turbo-mlx` | ERNIE-Image (8B, 8-step) | Q8 | 10 GB | 14 GB | Apache 2.0 |
