@@ -6,6 +6,14 @@
 
 ## 🆕 What's New
 
+### Unreleased — Qwen-Image-2.1 edits on a Mac, and a 6-step turbo
+
+- **Edit with Qwen-Image-2.1 on Apple Silicon.** `qwen-image-2.1-edit-mlx` takes up to ten reference pictures, a mask, an edit strength and prompt rewriting, from the same weights as `qwen-image-2.1-mlx`. Its ControlNet (`qwen-image-2.1-controlnet-mlx`: canny, depth, pose and five more, plus inpainting) and Qwen-Image-Edit-2511 (`qwen-image-edit-2511-mlx`) run natively too. Needs mflux 0.22, now the minimum.
+- **Qwen-Image-2.1 in 6 steps.** Load Viggle's turbo LoRA and pass `scheduler=viggle_turbo` — see [LoRAs on Apple Silicon](#loras-on-apple-silicon-mlx-models).
+- **New:** `ming-image-design-mlx` (UI, posters and infographics with transparent backgrounds, MIT) and, on NVIDIA through diffusers 0.41, `qwen-image-2.1` and Qwen's own 8-step `qwen-image-2.1-turbo`.
+- **Fixed:** `qwen-image-edit-mlx` redrew the picture instead of editing it — it was built as the text-to-image class. The MCP server didn't start with mcp 2.x, which `ollamadiffuser enable mcp` installs.
+- **Better:** `pull` links files another installed entry already downloaded from the same repo, so an editor next to its generator costs no second download. `ollamadiffuser ps` lists every running server, not just the last one started. MCP's `generate_image` also returns the saved file's path as text, and uses a running server that already holds the model instead of loading a second copy.
+
 ### v2.1.1 — ComfyUI nodes
 
 Three nodes that let a ComfyUI workflow use OllamaDiffuser's models — Qwen-Image-2.1, FLUX.2 klein, Kontext, Boogu, LTX-2 on MLX — as ordinary `IMAGE` / `VIDEO` steps, through the HTTP API, with no second copy of the weights. See [ComfyUI Nodes](#comfyui-nodes).
@@ -152,7 +160,7 @@ Most models work **without any token** -- just install and go. See [Hugging Face
 - **🔌 MCP & OpenClaw**: Model Context Protocol server for AI assistant integration (OpenClaw, Claude Code, Cursor)
 - **🧩 ComfyUI nodes**: draw, edit and film with OllamaDiffuser's models from inside a ComfyUI graph (`integrations/comfyui/`)
 - **🍎 Apple Silicon, two paths**:
-  - **MLX backend** via [mflux](https://github.com/filipstrand/mflux) — 33 native MLX entries (FLUX.1 family, FLUX.1 Krea, FLUX.2 Klein, Z-Image, Qwen-Image, Kontext, Fill, Redux, Depth, ControlNet, and since v2.0.21 Krea 2, Boogu, ERNIE-Image, Lens, Ideogram 4, FIBO, FIBO-Edit, SeedVR2). Typically **2-3× faster** than the PyTorch + MPS path on M-series.
+  - **MLX backend** via [mflux](https://github.com/filipstrand/mflux) — 37 native MLX entries (FLUX.1 family, FLUX.1 Krea, FLUX.2 Klein, Z-Image, Qwen-Image, Qwen-Image-2.1 with editing and a ControlNet, Kontext, Fill, Redux, Depth, ControlNet, and since v2.0.21 Krea 2, Boogu, ERNIE-Image, Lens, Ideogram 4, FIBO, FIBO-Edit, SeedVR2, Ming-Image). Typically **2-3× faster** than the PyTorch + MPS path on M-series.
   - **PyTorch + MPS** — full diffusers pipeline support with per-model dtype handling (float16/bfloat16, NaN sanitization), GGUF Metal acceleration, and `ollamadiffuser recommend` for hardware-aware model suggestions.
 - **📦 Smart Downloads**: `ollamadiffuser pull` downloads only diffusers pipeline files — skips root-level checkpoints, ONNX/Flax exports, and safety_checker. Saves 10–200 GB per model.
 - **♻️ Reuses what's already downloaded**: if a model is already in the Hugging Face cache (from ComfyUI, mflux, `hf download`…), `ollamadiffuser pull` hard-links it instead of downloading — seconds instead of tens of GB, and no second copy on disk.
@@ -333,6 +341,7 @@ Choose from 40+ models spanning every major architecture:
 | `krea-2-turbo` / `krea-2-raw` | Krea | 12B | 8 / 28 | 24GB+ | ❌ | Krea 2 Community |
 | `ernie-image-turbo` / `ernie-image` | Baidu | 8B | 8 / 50 | 20GB+ | ✅ | Apache 2.0 |
 | `qwen-image` | Alibaba (Qwen), 2512 | 20B | 50 | 24GB+ (offload) | ✅ | Apache 2.0 |
+| `qwen-image-2.1` / `qwen-image-2.1-turbo` | Alibaba (Qwen), diffusers 0.41+ | 7B + 8B encoder | 40 / 8 | 24GB+ (offload) | ❌ | Qwen Research |
 | `sana-1.5` | NVIDIA | 1.6B | 20 | 8GB+ | ✅ | Apache 2.0 |
 | `cogview4` | Zhipu AI | 6B | 50 | 12GB+ | ✅ | Apache 2.0 |
 | `kolors` | Kuaishou | 8.6B | 50 | 8GB+ | ✅ | Kolors License |
@@ -418,6 +427,7 @@ MLX entries run through [mflux](https://github.com/filipstrand/mflux) on Apple S
 | `z-anime-mlx` | Z-Anime (anime fine-tune of Z-Image base) | Q8 | 8 GB | 12 GB | Apache 2.0 |
 | `qwen-image-mlx` | Qwen-Image (20B) | Q8 | 22 GB | 24 GB | Apache 2.0 |
 | `qwen-image-2.1-mlx` | Qwen-Image-2.1 (mflux 0.20+) | Q8 | 34 GB | 64 GB (measured 45.8 GB peak) | Qwen Research (non-commercial) |
+| `ming-image-design-mlx` | Ming-Image-0.1-Design (6B, RGBA, 12 steps) | Q8 | 53 GB | 64 GB | MIT |
 | `boogu-image-turbo-mlx` | Boogu Image (10B, 4-step DMD) | Q8 | 12 GB | 16 GB | Apache 2.0 |
 | `ernie-image-turbo-mlx` | ERNIE-Image (8B, 8-step) | Q8 | 10 GB | 14 GB | Apache 2.0 |
 | `ernie-image-mlx` | ERNIE-Image SFT (8B, 50-step CFG) | Q8 | 10 GB | 14 GB | Apache 2.0 |
@@ -437,7 +447,10 @@ MLX entries run through [mflux](https://github.com/filipstrand/mflux) on Apple S
 | `flux.1-depth-dev-mlx` | `image=` | Non-Commercial |
 | `flux.1-controlnet-canny-mlx` | `control_image=` (canny edges) | Non-Commercial |
 | `flux.1-controlnet-upscaler-mlx` | `control_image=` (low-res source) | Non-Commercial |
-| `qwen-image-edit-mlx` | `image=` | Apache 2.0 |
+| `qwen-image-edit-mlx` | `image=` (2509) | Apache 2.0 |
+| `qwen-image-edit-2511-mlx` | `image=`, more as `images=` | Apache 2.0 |
+| `qwen-image-2.1-edit-mlx` | `image=` (up to ten with `images=`), optional `mask_image=`, `strength=` | Qwen Research (non-commercial) |
+| `qwen-image-2.1-controlnet-mlx` | `control_image=`, or `image=` + `mask_image=` to inpaint | Qwen Research (non-commercial) |
 | `flux.2-klein-9b-kv-edit-mlx` | `image=` (one or more references) | Non-Commercial (gated) |
 | `fibo-edit-mlx` | `image=` | Bria (gated) |
 | `seedvr2-3b-mlx` | `image=` (upscales it) | Apache 2.0 |
@@ -575,8 +588,20 @@ ollamadiffuser lora load pixel --scale 1.0
 ```
 
 Families that take LoRAs: FLUX.1 (and Kontext), FLUX.2 klein (and its edit variant), Z-Image,
-Qwen-Image, Krea 2, ERNIE-Image. Qwen-Image-2.1, Boogu, Lens, Ideogram 4, FIBO and SeedVR2 don't
-in mflux yet, and say so.
+Qwen-Image, Qwen-Image-2.1 (generation, edit and ControlNet), Krea 2, ERNIE-Image. Boogu, Lens,
+Ideogram 4, FIBO, Ming-Image and SeedVR2 don't in mflux yet, and say so.
+
+**Qwen-Image-2.1 in 6 steps** — Viggle's turbo LoRA with mflux's matching scheduler, for
+generation and editing alike:
+
+```bash
+ollamadiffuser lora pull Viggle/Qwen-Image-2.1-viggle-turbo \
+  -w Qwen-Image-2.1-viggle-turbo-v0.3-6step-lora-r256.safetensors -a qwen21-turbo
+ollamadiffuser lora load qwen21-turbo
+# then generate with 6 steps and the matching scheduler:
+curl -s localhost:8000/api/generate -H 'Content-Type: application/json' \
+  -d '{"prompt": "a cabin by the sea", "steps": 6, "scheduler": "viggle_turbo"}' -o cabin.png
+```
 
 On LTX video, pass `lora=` (a local `.safetensors` or a hub repo id) and `lora_strength=` to
 `/api/generate/video` for a style or motion LoRA; with a `control` video, `lora` is the IC-LoRA.
@@ -683,8 +708,10 @@ ollamadiffuser mcp
 }
 ```
 
+Works with mcp 1.x and 2.x.
+
 **Available MCP tools:**
-- `generate_image` -- Generate images from text prompts (auto-loads model)
+- `generate_image` -- Generate images from text prompts (auto-loads model). Returns the saved file's path as text and the image itself; when an `ollamadiffuser run` server already holds the model, that server does the work
 - `list_models` -- List available and installed models
 - `load_model` -- Load a model into memory
 - `get_status` -- Check device, loaded model, and system status

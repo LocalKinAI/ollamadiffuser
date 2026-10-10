@@ -4,6 +4,8 @@ import asyncio
 import io
 import logging
 import sys
+import time
+from pathlib import Path
 from typing import Optional
 
 from ..core.models.manager import model_manager
@@ -24,11 +26,58 @@ def _ensure_mcp():
         return False
 
 
+def _mcp_api():
+    """The server class, Image and ToolError of whichever mcp is installed.
+
+    mcp 2.x renamed FastMCP to MCPServer (mcp.server.mcpserver); 1.x has it
+    as mcp.server.fastmcp. `ollamadiffuser enable mcp` installs the newest,
+    so importing only the 1.x name left the server unable to start.
+    """
+    try:
+        from mcp.server.mcpserver import Image, MCPServer
+        from mcp.server.mcpserver.exceptions import ToolError
+        return MCPServer, Image, ToolError
+    except ImportError:
+        from mcp.server.fastmcp import FastMCP, Image
+        from mcp.server.fastmcp.exceptions import ToolError
+        return FastMCP, Image, ToolError
+
+
+def _serving(model: Optional[str]) -> Optional[str]:
+    """Base URL of a running server that already holds ``model`` (any model
+    when None) — generating there spares a second copy in this process."""
+    from ..core.utils import server_registry
+    for record in server_registry.running():
+        answer = server_registry.ask(record.get("host"), record.get("port"), timeout=1.0)
+        if answer and answer.get("loaded") and (model is None or answer.get("model") == model):
+            host = record.get("host")
+            host = "127.0.0.1" if host in ("0.0.0.0", "", None) else host
+            return f"http://{host}:{record.get('port')}"
+    return None
+
+
+def _generate_over_http(base: str, body: dict) -> bytes:
+    import requests
+    response = requests.post(f"{base}/api/generate", json={k: v for k, v in body.items() if v is not None},
+                             timeout=3600)
+    response.raise_for_status()
+    return response.content
+
+
+def _save(png: bytes, seed: Optional[int]) -> Path:
+    from ..core.config.settings import settings
+    folder = Path(settings.config_dir) / "outputs"
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"mcp-{time.strftime('%Y%m%d-%H%M%S')}-{seed if seed is not None else 'r'}.png"
+    path.write_bytes(png)
+    return path
+
+
 def create_mcp_server():
     """Create and configure the MCP server with all tools."""
-    from mcp.server.fastmcp import FastMCP, Image
+    Server, Image, ToolError = _mcp_api()
 
-    mcp_server = FastMCP(
+    mcp_server = Server(
         "OllamaDiffuser",
         instructions=(
             "Local AI image generation via Stable Diffusion, FLUX, and 30+ models"
@@ -45,8 +94,11 @@ def create_mcp_server():
         steps: Optional[int] = None,
         guidance_scale: Optional[float] = None,
         seed: Optional[int] = None,
-    ) -> Image:
+    ) -> list:
         """Generate an image from a text prompt using a local diffusion model.
+
+        Returns the path of the saved PNG as text, then the image itself — a
+        client that reads only text still gets something it can open.
 
         Args:
             prompt: Text description of the desired image
@@ -58,38 +110,61 @@ def create_mcp_server():
             guidance_scale: Guidance scale (model-specific default if omitted)
             seed: Random seed for reproducibility
         """
-        if model and model_manager.get_current_model() != model:
-            if not model_manager.is_model_installed(model):
-                raise ValueError(
-                    f"Model '{model}' is not installed. "
-                    f"Install it first: ollamadiffuser pull {model}"
+        # A server already holding the model does the work: loading it here
+        # as well would put a second copy — tens of GB — in memory.
+        # Named model: a server holding it. No name and nothing loaded here:
+        # any server holding a model. Otherwise this process's own model.
+        if model:
+            base = await asyncio.to_thread(_serving, model)
+        elif not model_manager.is_model_loaded():
+            base = await asyncio.to_thread(_serving, None)
+        else:
+            base = None
+        if base:
+            used = model or "the running server's model"
+            try:
+                png = await asyncio.to_thread(_generate_over_http, base, {
+                    "prompt": prompt, "negative_prompt": negative_prompt, "width": width,
+                    "height": height, "steps": steps, "cfg_scale": guidance_scale, "seed": seed,
+                })
+            except Exception as e:
+                raise ToolError(f"The OllamaDiffuser server at {base} failed: {e}")
+        else:
+            if model and model_manager.get_current_model() != model:
+                if not model_manager.is_model_installed(model):
+                    raise ToolError(
+                        f"Model '{model}' is not installed. "
+                        f"Install it first: ollamadiffuser pull {model}"
+                    )
+                logger.info(f"Loading model: {model}")
+                success = await asyncio.to_thread(model_manager.load_model, model)
+                if not success:
+                    raise ToolError(f"Failed to load model '{model}'")
+
+            if not model_manager.is_model_loaded():
+                raise ToolError(
+                    "No model loaded. Load one with: load_model('model-name') "
+                    "or pass model= parameter"
                 )
-            logger.info(f"Loading model: {model}")
-            success = await asyncio.to_thread(model_manager.load_model, model)
-            if not success:
-                raise RuntimeError(f"Failed to load model '{model}'")
 
-        if not model_manager.is_model_loaded():
-            raise RuntimeError(
-                "No model loaded. Load one with: load_model('model-name') "
-                "or pass model= parameter"
+            used = model_manager.get_current_model()
+            engine = model_manager.loaded_model
+            result = await asyncio.to_thread(
+                engine.generate_image,
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                num_inference_steps=steps,
+                guidance_scale=guidance_scale,
+                width=width,
+                height=height,
+                seed=seed,
             )
+            buf = io.BytesIO()
+            result.save(buf, format="PNG")
+            png = buf.getvalue()
 
-        engine = model_manager.loaded_model
-        result = await asyncio.to_thread(
-            engine.generate_image,
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            num_inference_steps=steps,
-            guidance_scale=guidance_scale,
-            width=width,
-            height=height,
-            seed=seed,
-        )
-
-        buf = io.BytesIO()
-        result.save(buf, format="PNG")
-        return Image(data=buf.getvalue(), format="png")
+        path = await asyncio.to_thread(_save, png, seed)
+        return [f"Saved to {path} ({used})", Image(data=png, format="png")]
 
     @mcp_server.tool()
     async def list_models() -> str:

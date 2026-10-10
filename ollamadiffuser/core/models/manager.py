@@ -127,6 +127,18 @@ class ModelManager:
             return info
         return None
     
+    def _installed_copies(self, model_name: str, repo_id: str) -> List[str]:
+        """Folders of other installed models pulled from ``repo_id`` — the
+        sources `pull` links from before it downloads (see link_from_local_dirs)."""
+        folders = []
+        for name, config in settings.models.items():
+            if name == model_name:
+                continue
+            info = model_registry.get_model(name) or {}
+            if info.get("repo_id") == repo_id and getattr(config, "path", None):
+                folders.append(str(config.path))
+        return folders
+
     def _get_model_size(self, model_path: str) -> str:
         """Get model size"""
         try:
@@ -267,6 +279,9 @@ class ModelManager:
                 if progress_callback:
                     progress_callback(f"📦 Filtering downloads: skipping non-PyTorch files and safety_checker")
             
+            # Another installed entry from the same repo already has these files.
+            download_kwargs["local_sources"] = self._installed_copies(model_name, model_info["repo_id"])
+
             # Download main model using robust downloader with enhanced progress
             from ..utils.download_utils import robust_snapshot_download
             robust_snapshot_download(**download_kwargs)

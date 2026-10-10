@@ -166,3 +166,98 @@ class TestPullUsesTheCache:
                           return_value=str(hub.target)) as dl:
             robust_snapshot_download(repo_id=REPO, local_dir=str(hub.target))
         dl.assert_called_once()
+
+
+# --------------------------------------------------------------------------
+# Another installed entry from the same repo
+# --------------------------------------------------------------------------
+
+@pytest.fixture
+def sibling(hub, tmp_path):
+    """An installed model folder holding the repo's files (no hub cache needed)."""
+    import shutil
+    shutil.rmtree(hub.cache)                      # only the installed copy is on disk
+    folder = tmp_path / "models" / "my-model-edit"
+    for name, (content, _) in FILES.items():
+        f = folder / name
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(content)
+    return folder
+
+
+def _write_metadata(folder, name, etag):
+    meta = folder / ".cache" / "huggingface" / "download" / f"{name}.metadata"
+    meta.parent.mkdir(parents=True, exist_ok=True)
+    meta.write_text(f"deadbeef\n{etag}\n1700000000.0\n")
+
+
+class TestLinkFromInstalledCopies:
+    def test_files_another_entry_downloaded_are_linked(self, hub, sibling):
+        from ollamadiffuser.core.utils.download_utils import link_from_local_dirs
+        messages = []
+        ok = link_from_local_dirs(REPO, str(hub.target), [str(sibling)],
+                                  progress_callback=messages.append)
+        assert ok is True
+        for name in FILES:
+            assert os.path.samefile(hub.target / name, sibling / name)
+        assert "installed as my-model-edit" in messages[-1]
+
+    def test_a_recorded_hash_that_disagrees_rules_the_file_out(self, hub, sibling):
+        from ollamadiffuser.core.utils.download_utils import link_from_local_dirs
+        _write_metadata(sibling, "vae/model.safetensors", "0" * 64)
+        assert link_from_local_dirs(REPO, str(hub.target), [str(sibling)]) is False
+        assert not hub.target.exists() or not any(hub.target.rglob("*.safetensors"))
+
+    def test_a_recorded_hash_that_agrees_is_accepted(self, hub, sibling):
+        from ollamadiffuser.core.utils.download_utils import link_from_local_dirs
+        content, lfs = FILES["vae/model.safetensors"]
+        _write_metadata(sibling, "vae/model.safetensors", hashlib.sha256(content).hexdigest())
+        assert link_from_local_dirs(REPO, str(hub.target), [str(sibling)]) is True
+
+    def test_a_wrong_size_or_a_missing_file_downloads_instead(self, hub, sibling):
+        from ollamadiffuser.core.utils.download_utils import link_from_local_dirs
+        (sibling / "vae/model.safetensors").write_bytes(b"short")
+        assert link_from_local_dirs(REPO, str(hub.target), [str(sibling)]) is False
+        (sibling / "vae/model.safetensors").unlink()
+        assert link_from_local_dirs(REPO, str(hub.target), [str(sibling)]) is False
+
+    def test_its_own_folder_is_not_a_source(self, hub):
+        from ollamadiffuser.core.utils.download_utils import link_from_local_dirs
+        assert link_from_local_dirs(REPO, str(hub.target), [str(hub.target)]) is False
+
+    def test_pull_links_from_an_installed_copy_before_downloading(self, hub, sibling):
+        with patch.object(download_utils, "snapshot_download") as dl:
+            out = robust_snapshot_download(repo_id=REPO, local_dir=str(hub.target),
+                                           local_sources=[str(sibling)])
+        dl.assert_not_called()
+        assert out == str(hub.target)
+        assert os.path.samefile(hub.target / "transformer/model.safetensors",
+                                sibling / "transformer/model.safetensors")
+
+    def test_force_skips_installed_copies_too(self, hub, sibling):
+        with patch.object(download_utils, "link_from_local_dirs") as link, \
+             patch.object(download_utils, "get_repo_file_list", return_value={}), \
+             patch.object(download_utils, "snapshot_download", return_value=str(hub.target)):
+            robust_snapshot_download(repo_id=REPO, local_dir=str(hub.target),
+                                     local_sources=[str(sibling)], force_download=True)
+        link.assert_not_called()
+
+
+class TestInstalledCopiesLookup:
+    def test_only_other_installed_entries_from_the_same_repo(self, monkeypatch):
+        from types import SimpleNamespace as NS
+        from ollamadiffuser.core.models import manager as mgr
+        installed = {
+            "qwen-image-2.1-mlx": NS(path="/m/qwen-image-2.1-mlx"),
+            "qwen-image-2.1-edit-mlx": NS(path="/m/qwen-image-2.1-edit-mlx"),
+            "z-image-turbo-mlx": NS(path="/m/z-image-turbo-mlx"),
+        }
+        repos = {"qwen-image-2.1-mlx": "Qwen/Qwen-Image-2.1",
+                 "qwen-image-2.1-edit-mlx": "Qwen/Qwen-Image-2.1",
+                 "z-image-turbo-mlx": "Tongyi-MAI/Z-Image-Turbo"}
+        monkeypatch.setattr(mgr.settings, "models", installed)
+        monkeypatch.setattr(mgr.model_registry, "get_model", lambda n: {"repo_id": repos.get(n)})
+        folders = mgr.model_manager._installed_copies("qwen-image-2.1-controlnet-mlx", "Qwen/Qwen-Image-2.1")
+        assert sorted(folders) == ["/m/qwen-image-2.1-edit-mlx", "/m/qwen-image-2.1-mlx"]
+        assert mgr.model_manager._installed_copies("qwen-image-2.1-mlx", "Qwen/Qwen-Image-2.1") == \
+            ["/m/qwen-image-2.1-edit-mlx"]

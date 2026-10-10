@@ -61,7 +61,8 @@ SUPPORTED_MLX_VARIANTS = frozenset({
     "flux2-edit",        # FLUX.2 klein editing — several reference images at once
     "z_image",           # Z-Image / Z-Image-Turbo (text-to-image)
     "z_image-controlnet",  # Z-Image-Turbo + alibaba-pai's ControlNet Union 2.1
-    "qwen-image",        # Qwen-Image / Qwen-Image-Edit
+    "qwen-image",        # Qwen-Image (text-to-image)
+    "qwen-image-edit",   # Qwen-Image-Edit 2509 / 2511 (instruction editing, reference images)
     # Families mflux added after our May 2026 line. Each one is a class and
     # an alias — see _ALIAS_ROUTED — because mflux resolves the config from
     # the alias itself, so there is nothing per-family left to write.
@@ -74,6 +75,10 @@ SUPPORTED_MLX_VARIANTS = frozenset({
     "fibo-edit",         # FIBO-Edit / -rmbg (instruction editing)
     "seedvr2",           # SeedVR2 3B / 7B (upscaling)
     "qwen21",            # Qwen-Image-2.1 (mflux 0.20.0+; a new architecture, not a qwen-image checkpoint)
+    # mflux 0.21–0.22.
+    "qwen21-edit",       # Qwen-Image-2.1 editing: up to ten references, masks, RGBA
+    "qwen21-controlnet", # Qwen-Image-2.1 + alibaba-pai's Fun ControlNet Union
+    "ming",              # inclusionAI Ming-Image-0.1-Design (RGBA, 12 steps)
 })
 
 # Families whose mflux config comes straight from the alias: variant →
@@ -91,7 +96,37 @@ _ALIAS_ROUTED = {
     "fibo-edit":   ("mflux.models.fibo.variants.edit.fibo_edit", "FIBOEdit"),
     "seedvr2":     ("mflux.models.seedvr2.variants.upscale.seedvr2", "SeedVR2"),
     "qwen21":      ("mflux.models.qwen21.variants.txt2img.qwen_image_21", "QwenImage21"),
+    "qwen-image-edit": ("mflux.models.qwen.variants.edit.qwen_image_edit", "QwenImageEdit"),
+    "qwen21-edit": ("mflux.models.qwen21.variants.edit.qwen_image_21_edit", "QwenImage21Edit"),
+    "qwen21-controlnet": ("mflux.models.qwen21.variants.controlnet.qwen_image_21_controlnet",
+                          "QwenImage21Controlnet"),
+    "ming":        ("mflux.models.ming_image.variants.ming_image", "MingImage"),
 }
+
+# Variants that take their pictures as a list of references (``image_paths``)
+# rather than one starting image.
+_REFERENCE_LIST_VARIANTS = frozenset({"flux2-edit", "qwen-image-edit", "qwen21-edit"})
+
+# Registry parameters handed to the mflux constructor when the class takes
+# them: name → how to turn the YAML value into the argument.
+def _mx_dtype(name):
+    import mlx.core as mx
+    return getattr(mx, str(name))
+
+_INIT_EXTRAS = {
+    # FLUX.2 klein, Z-Image, Qwen-Image-2.1 (mflux 0.22): attention and
+    # feed-forward in float16 — 7–29% faster per mflux, the image for a
+    # seed changes slightly. Off unless an entry asks.
+    "compute_precision": _mx_dtype,
+    # Ming-Image: its 16B MoE text encoder quantized on its own.
+    "text_encoder_quantize": int,
+    "low_ram": bool,
+}
+
+# Registry parameters handed to generate_image() when it takes them, unless
+# the call names its own value.
+_GENERATE_EXTRAS = ("scheduler", "step_cache_ratio", "use_step_cache", "output_resolution",
+                    "enhance_prompt", "auto_mask", "use_kv_cache")
 
 # Per-variant required-input kwargs (passed to ``generate()``). If any
 # of these are absent, ``generate()`` raises ValueError early instead of
@@ -106,13 +141,15 @@ _VARIANT_REQUIRED_INPUTS = {
     "flux1-depth":      ["image"],
     "flux1-controlnet": ["control_image"],
     "z_image-controlnet": ["control_image"],
+    # Qwen-Image-Edit's signature has no default for its references.
+    "qwen-image-edit":  ["image"],
     "fibo-edit":        ["image"],
     "seedvr2":          ["image"],
 }
 
 # Variants whose job is to follow a control image. /api/generate/controlnet
 # asks the strategy this before it runs.
-_CONTROLNET_VARIANTS = frozenset({"flux1-controlnet", "z_image-controlnet"})
+_CONTROLNET_VARIANTS = frozenset({"flux1-controlnet", "z_image-controlnet", "qwen21-controlnet"})
 
 # The control kinds Z-Image's Union ControlNet was trained on (mflux's
 # ControlType); the caller says which one the control image is.
@@ -219,6 +256,12 @@ class MLXStrategy(InferenceStrategy):
         variant = params.get("mlx_variant", "flux1")
         mlx_model_name = params.get("mlx_model_name")
         quantize = params.get("quantize")
+        # Entries written before the edit variant existed (a user's own
+        # models.yaml, say) name the editor as qwen-image / qwen-image-edit.
+        # That built the text-to-image class around the edit weights, which
+        # redraws the picture instead of following the instruction.
+        if variant == "qwen-image" and str(mlx_model_name or "").startswith("qwen-image-edit"):
+            variant = "qwen-image-edit"
 
         if variant not in SUPPORTED_MLX_VARIANTS:
             logger.error(
@@ -271,7 +314,8 @@ class MLXStrategy(InferenceStrategy):
         local_dir = str(local_dir) if looks_like_model_dir(local_dir) else None
         if local_dir:
             logger.info(f"Using the downloaded weights at {local_dir}")
-        self._build_args = (model_cls, quantize, mflux_config, local_dir)
+        self._build_args = (model_cls, quantize, mflux_config, local_dir,
+                            self._init_extras(model_cls, params))
         self._loras = []
         try:
             self._mlx_model = self._construct([])
@@ -301,8 +345,8 @@ class MLXStrategy(InferenceStrategy):
         mflux resolves the model from its own name and fetches the repo a
         second time into the Hugging Face cache.
         """
-        model_cls, quantize, mflux_config, local_dir = self._build_args
-        kwargs = {"quantize": quantize, "model_config": mflux_config}
+        model_cls, quantize, mflux_config, local_dir, extras = self._build_args
+        kwargs = {"quantize": quantize, "model_config": mflux_config, **extras}
         if loras:
             kwargs["lora_paths"] = [path for path, _ in loras]
             kwargs["lora_scales"] = [scale for _, scale in loras]
@@ -321,6 +365,25 @@ class MLXStrategy(InferenceStrategy):
                 f"Could not load from {local_dir} ({e}); falling back to the hub."
             )
             return self._mlx_call(model_cls, **kwargs)
+
+    @staticmethod
+    def _init_extras(model_cls, params: dict) -> dict:
+        """The registry parameters this mflux class takes at construction."""
+        import inspect
+        try:
+            accepted = set(inspect.signature(model_cls.__init__).parameters)
+        except (TypeError, ValueError):
+            return {}
+        extras = {}
+        for name, convert in _INIT_EXTRAS.items():
+            value = params.get(name)
+            if value is None:
+                continue
+            if name not in accepted:
+                logger.info(f"{model_cls.__name__} takes no {name}; ignoring {value!r}")
+                continue
+            extras[name] = convert(value)
+        return extras
 
     @staticmethod
     def _resolve_model_and_config(variant: str, mlx_model_name: str):
@@ -346,7 +409,11 @@ class MLXStrategy(InferenceStrategy):
                           | "klein-base-4b" | "klein-base-9b"
           z_image       → "z-image" | "z-image-turbo"
           z_image-controlnet → "z-image-turbo-controlnet-union-2.1"
-          qwen-image    → "qwen-image" | "qwen-image-edit"
+          qwen-image    → "qwen-image"
+          qwen-image-edit → "qwen-image-edit" (2509) | "qwen-image-edit-2511"
+          qwen21-edit   → "qwen-image-2.1"
+          qwen21-controlnet → "qwen-image-2.1-controlnet-union"
+          ming          → "ming-image-design"
 
         Imports are local so this module is safe to import on non-MLX
         platforms.
@@ -474,18 +541,19 @@ class MLXStrategy(InferenceStrategy):
             )
 
         if variant == "qwen-image":
-            from mflux.models.qwen.variants.txt2img.qwen_image import QwenImage
             from mflux.models.common.config.model_config import ModelConfig
-            factories = {
-                "qwen-image": ModelConfig.qwen_image,
-                "qwen-image-edit": ModelConfig.qwen_image_edit,
-            }
-            if mlx_model_name not in factories:
+            if str(mlx_model_name).startswith("qwen-image-edit"):
+                # The editor is its own class (references as image_paths);
+                # see load(), which routes these names to qwen-image-edit.
+                from mflux.models.qwen.variants.edit.qwen_image_edit import QwenImageEdit
+                return QwenImageEdit, ModelConfig.from_name(model_name=mlx_model_name, base_model=None)
+            from mflux.models.qwen.variants.txt2img.qwen_image import QwenImage
+            if mlx_model_name != "qwen-image":
                 raise ValueError(
-                    f"qwen-image: mlx_model_name must be one of {sorted(factories)}, "
-                    f"got {mlx_model_name!r}"
+                    f"qwen-image: mlx_model_name must be 'qwen-image' (or a qwen-image-edit "
+                    f"name), got {mlx_model_name!r}"
                 )
-            return QwenImage, factories[mlx_model_name]()
+            return QwenImage, ModelConfig.qwen_image()
 
         raise ValueError(f"Unhandled mlx_variant: {variant}")
 
@@ -553,12 +621,17 @@ class MLXStrategy(InferenceStrategy):
                 f"MLX variant {self._variant!r} requires kwargs {missing}; "
                 f"pass them to generate(), e.g. generate(prompt, image=<PIL|path>)."
             )
+        if self._variant == "qwen21-controlnet" and not controlnet_image_path and not (
+                image_path and masked_image_path):
+            raise ValueError(
+                "qwen21-controlnet needs control_image, or image with mask_image to inpaint."
+            )
 
         # Negative prompt: mflux accepts None or str.
         neg = negative_prompt or None
         # Reference images, for the variants that take a list of them. Extra
         # ones can be passed as `images=[...]`; one as `image=` works too.
-        variant_takes_list = self._variant in ("flux2-edit",)
+        variant_takes_list = self._variant in _REFERENCE_LIST_VARIANTS
         extra_paths = self._materialize_image_path_list(kwargs.get("images"))
         if variant_takes_list and extra_paths:
             image_path = image_path or extra_paths[0]
@@ -573,16 +646,22 @@ class MLXStrategy(InferenceStrategy):
             "height": int(height),
             "width": int(width),
             "guidance": float(guidance),
-            "image_path": image_path,
-            # flux2-edit takes several references rather than one, and a
+            # Qwen-Image-Edit reads image_path as an img2img starting point,
+            # separate from its references; the picture to edit is a reference.
+            "image_path": None if self._variant == "qwen-image-edit" else image_path,
+            # The editors take several references rather than one, and a
             # caller with a single picture should not have to know that.
             "image_paths": (extra_paths or ([image_path] if image_path else None))
                            if variant_takes_list else None,
             "masked_image_path": masked_image_path,
+            # Qwen-Image-2.1's edit and ControlNet call the mask mask_image.
+            "mask_image": masked_image_path,
             "depth_image_path": depth_image_path,
             "controlnet_image_path": controlnet_image_path,
             "redux_image_paths": redux_image_paths,
             "image_strength": kwargs.get("strength"),
+            # Qwen-Image-2.1 edit: how far the edit may move (1.0 = all the way).
+            "strength": kwargs.get("strength"),
             # /api/generate/controlnet and the engine call it
             # controlnet_conditioning_scale, diffusers' name; mflux's is
             # controlnet_strength. Either one reaches the model.
@@ -597,6 +676,17 @@ class MLXStrategy(InferenceStrategy):
             "redux_image_strengths": kwargs.get("redux_image_strengths"),
             "negative_prompt": neg,
         }
+        # Per-entry knobs mflux exposes on some families — a scheduler (the
+        # Viggle turbo LoRA needs "viggle_turbo"), Qwen-Image-2.1's step
+        # cache, prompt enhancement. The call's own value wins.
+        # Only what someone set: an explicit None would replace mflux's own
+        # default (scheduler=None is an error in Qwen-Image-2.1, not "linear").
+        for key in _GENERATE_EXTRAS:
+            value = kwargs.get(key)
+            if value is None:
+                value = params.get(key)
+            if value is not None:
+                candidate_kwargs[key] = value
         try:
             import inspect
             accepted = set(

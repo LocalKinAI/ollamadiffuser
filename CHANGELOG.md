@@ -7,6 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🖼️ Qwen-Image-2.1 edits, ControlNet and a 6-step turbo on Apple Silicon — mflux 0.22
+
+- **mflux 0.22.0 is now the minimum** (`pyproject.toml`, `install.sh`,
+  `ollamadiffuser enable mlx`). 0.21 and 0.22 brought Qwen-Image-2.1 editing,
+  LoRAs and a ControlNet, Qwen-Image-Edit-2511 as itself, Ming-Image, and
+  fixes that change images: FLUX.1, FIBO and Qwen-Image load the bias of
+  their last norm layer again (mflux 0.16–0.21 dropped it), and a LoRA baked
+  into a quantized model now has its full effect.
+- **`qwen-image-2.1-edit-mlx`** — mflux's `QwenImage21Edit` over the same
+  weights as `qwen-image-2.1-mlx`: up to ten references (`image=`, then
+  `images=`), `mask_image=`, `strength=`, `enhance_prompt=`, RGBA output.
+- **`qwen-image-2.1-controlnet-mlx`** — alibaba-pai's Fun ControlNet Union:
+  canny, depth, pose and five more kinds of control image, and inpainting
+  with `image=` plus `mask_image=`. The 7.5 GB ControlNet is fetched by mflux
+  on first load.
+- **`qwen-image-edit-2511-mlx`** — Qwen-Image-Edit-2511 at 8 bits on a Mac,
+  now that mflux reads its references at timestep 0 as the checkpoint
+  expects.
+- **`ming-image-design-mlx`** — inclusionAI's Ming-Image-0.1-Design: UI,
+  posters and infographics, with transparent backgrounds. 12 steps, MIT.
+- **Qwen-Image-2.1 takes LoRAs** through the MLX LoRA path, and a new
+  `scheduler` reaches mflux — from the registry, from `generate()`, and as a
+  field on `/api/generate` and `/api/generate/img2img`. With Viggle's turbo
+  LoRA and `scheduler=viggle_turbo` it draws in 6 steps instead of 40.
+  **Measured on the M3 Ultra**: a 1024×1024 image in 6 steps took 42.7 s at a
+  39.1 GB peak, with the 1.36 GB LoRA loaded in 50.9 s, download included.
+- Constructor knobs mflux added are passed when an entry sets them:
+  `compute_precision: float16` (attention and feed-forward in float16 on
+  klein, Z-Image and Qwen-Image-2.1, 7–29% faster per mflux) and Ming's
+  `text_encoder_quantize`. A knob nobody set is not passed at all: an
+  explicit `scheduler=None` is an error in Qwen-Image-2.1, not its default —
+  which the box run caught before release.
+
+### 🔧 Fixed
+
+- **`qwen-image-edit-mlx` didn't edit.** It built `QwenImage` — mflux's
+  text-to-image class — around the edit weights, so a picture was redrawn
+  rather than edited, and a test since 2.0.16 pinned that. It now builds
+  `QwenImageEdit` and passes the picture as a reference (`image_paths`), not
+  as an img2img start. Entries that still say `mlx_variant: qwen-image` with
+  an edit name are routed the same way.
+- **The MCP server didn't start with mcp 2.x**, which `ollamadiffuser enable
+  mcp` installs: 2.x renamed `FastMCP` to `MCPServer`. Both are supported, and
+  the tests run against 1.30 and 2.3.
+- **The generic diffusers path passed arguments a pipeline doesn't take.**
+  `QwenImage21Pipeline` has no `guidance_scale` (its CFG is `true_cfg_scale`),
+  so every call was a TypeError. Arguments are now matched to the pipeline's
+  signature, and guidance goes in as `true_cfg_scale` where that is the only
+  name it has.
+
+### ➕ On NVIDIA: Qwen-Image-2.1 through diffusers 0.41
+
+- **`qwen-image-2.1`** and Qwen's own 8-step **`qwen-image-2.1-turbo`**
+  (released 2026-10-09; its 8-step sigma schedule lives in the checkpoint's
+  `model_index.json` and the pipeline uses it whatever step count is given):
+  generation, and editing when a picture is passed. Both need diffusers 0.41.
+  Research licence. Checked that every pipeline class the registry names is
+  still in 0.41, and that the APIs 0.41 removed are none we call.
+
+### ♻️ Smaller downloads, a fuller `ps`, a friendlier MCP
+
+- **`pull` links from other installed entries of the same repo** before it
+  downloads: an editor next to its generator, a model and its ControlNet,
+  the Mac and NVIDIA builds of one model. A file counts when it has the
+  repo's size and, where huggingface_hub recorded one, the repo's content
+  hash; every wanted file must be found, or nothing is linked.
+- **`ollamadiffuser ps` lists every running server.** Each `run` / `serve`
+  leaves a record under `~/.ollamadiffuser/servers/` while it is up; `ps`
+  drops records of dead processes and asks each live server what it holds.
+  Stopping one server no longer clears another's current model.
+- **MCP `generate_image`** returns the saved PNG's path as text before the
+  image, so a client that reads only text — kinclaw's MCP client is one —
+  gets something to open. When an `ollamadiffuser run` server already holds
+  the model, the MCP server asks it instead of loading a second copy.
+
 ## [2.1.1] - 2026-09-23
 
 ### 🧩 ComfyUI nodes

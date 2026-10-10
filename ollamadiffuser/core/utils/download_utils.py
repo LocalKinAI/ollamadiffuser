@@ -330,14 +330,30 @@ def link_from_hf_cache(
     else:
         return False                      # no cache holds all of them
 
-    target = Path(local_dir)
+    where = blobs.parent.parent
+    return _hardlink_all(
+        sources, Path(local_dir), repo_id, progress_callback,
+        found=f"in the Hugging Face cache ({where})",
+        elsewhere="is in the Hugging Face cache, but on another disk",
+    )
+
+
+def _hardlink_all(sources, target: Path, repo_id: str, progress_callback,
+                  found: str, elsewhere: str) -> bool:
+    """Hard-link each ``(repo file, source path)`` into ``target``.
+
+    All or nothing: a link that fails takes back the ones already made. Hard
+    links, not symlinks, so the model outlives whatever it was linked from,
+    and they share the file — nothing may write into these in place (loaders
+    don't). They cannot cross filesystems; then this says so and returns False.
+    """
     probe = target
     while not probe.exists():
         probe = probe.parent
     if os.stat(sources[0][1]).st_dev != os.stat(probe).st_dev:
         if progress_callback:
-            progress_callback(f"ℹ️ {repo_id} is in the Hugging Face cache, but on another "
-                              f"disk — hard links can't cross disks, downloading instead")
+            progress_callback(f"ℹ️ {repo_id} {elsewhere} — hard links can't cross disks, "
+                              f"downloading instead")
         return False
 
     made = []
@@ -357,15 +373,93 @@ def link_from_hf_cache(
                 dst.unlink()
             except OSError:
                 pass
-        logger.warning(f"Could not link {repo_id} from the HF cache ({e}); downloading instead")
+        logger.warning(f"Could not link {repo_id} {found} ({e}); downloading instead")
         return False
 
     total = sum(real.stat().st_size for _, real in sources)
     if progress_callback:
-        progress_callback(f"♻️ {repo_id} was already in the Hugging Face cache ({blobs.parent.parent}): "
+        progress_callback(f"♻️ {repo_id} was already {found}: "
                           f"linked {len(sources)} files, {format_size(total)}, nothing downloaded")
-    logger.info(f"Linked {repo_id} from the HF cache: {len(sources)} files, {format_size(total)}")
+    logger.info(f"Linked {repo_id} {found}: {len(sources)} files, {format_size(total)}")
     return True
+
+
+def _recorded_etag(folder: Path, rfilename: str) -> Optional[str]:
+    """The content hash huggingface_hub wrote when it downloaded ``rfilename``
+    into ``folder`` (its local_dir metadata), or None when there is none."""
+    meta = folder / ".cache" / "huggingface" / "download" / f"{rfilename}.metadata"
+    try:
+        lines = meta.read_text().splitlines()
+    except OSError:
+        return None
+    return lines[1].strip().strip('"') if len(lines) >= 2 and lines[1].strip() else None
+
+
+def link_from_local_dirs(
+    repo_id: str,
+    local_dir: str,
+    source_dirs: list,
+    allow_patterns: Optional[list] = None,
+    ignore_patterns: Optional[list] = None,
+    progress_callback: Optional[Callable] = None,
+) -> bool:
+    """Fill ``local_dir`` from other installed models pulled from ``repo_id``.
+
+    Several entries share a repo — an editor and its generator
+    (qwen-image-2.1-mlx and -edit-mlx), a model and its ControlNet
+    (z-image-turbo-mlx and -controlnet-mlx), the Mac and NVIDIA builds of one
+    model — and each pull used to download the same tens of gigabytes into a
+    folder of its own. A file in another such folder is used when it has the
+    repo's size and, where huggingface_hub recorded one, the repo's content
+    hash. Every wanted file must be found, or nothing is linked.
+    """
+    from huggingface_hub.utils import filter_repo_objects
+
+    target = Path(local_dir)
+    folders = []
+    for d in source_dirs or []:
+        folder = Path(d).expanduser()
+        if folder.is_dir() and folder.resolve() != target.resolve() and folder not in folders:
+            folders.append(folder)
+    if not folders:
+        return False
+
+    try:
+        info = HfApi().repo_info(repo_id=repo_id, files_metadata=True)
+    except Exception as e:
+        logger.debug(f"Installed-copy check skipped for {repo_id}: {e}")
+        return False
+    wanted = list(filter_repo_objects(
+        info.siblings or [], allow_patterns=allow_patterns,
+        ignore_patterns=ignore_patterns, key=lambda s: s.rfilename,
+    ))
+    if not wanted:
+        return False
+
+    sources, used = [], set()
+    for sib in wanted:
+        expected = _blob_id(sib)
+        for folder in folders:
+            candidate = folder / sib.rfilename
+            if not candidate.is_file():
+                continue
+            if sib.size is not None and candidate.stat().st_size != sib.size:
+                continue
+            etag = _recorded_etag(folder, sib.rfilename)
+            if etag and expected and etag != expected:
+                continue                  # same name and size, other content
+            sources.append((sib, Path(os.path.realpath(candidate))))
+            used.add(folder)
+            break
+        else:
+            return False                  # one file is in no installed copy
+
+    names = ", ".join(sorted(f.name for f in used))
+    return _hardlink_all(
+        sources, target, repo_id, progress_callback,
+        found=f"installed as {names}",
+        elsewhere=f"is installed as {names}, but on another disk",
+    )
 
 def robust_snapshot_download(
     repo_id: str,
@@ -376,7 +470,8 @@ def robust_snapshot_download(
     force_download: bool = False,
     progress_callback: Optional[Callable] = None,
     allow_patterns: Optional[list] = None,
-    ignore_patterns: Optional[list] = None
+    ignore_patterns: Optional[list] = None,
+    local_sources: Optional[list] = None,
 ) -> str:
     """
     Download repository snapshot with robust error handling and detailed progress tracking
@@ -391,6 +486,8 @@ def robust_snapshot_download(
         progress_callback: Optional progress callback function
         allow_patterns: List of file patterns to include (e.g., ["*.gguf", "*.safetensors"])
         ignore_patterns: List of file patterns to exclude (e.g., ["*.txt", "*.md"])
+        local_sources: Folders of other installed models from the same repo,
+            to link the files from before downloading them
     
     Returns:
         Path to downloaded repository
@@ -403,6 +500,12 @@ def robust_snapshot_download(
         repo_id, local_dir,
         allow_patterns=allow_patterns, ignore_patterns=ignore_patterns,
         cache_dirs=[cache_dir] if cache_dir else None,
+        progress_callback=progress_callback,
+    ):
+        return local_dir
+    if not force_download and local_sources and link_from_local_dirs(
+        repo_id, local_dir, local_sources,
+        allow_patterns=allow_patterns, ignore_patterns=ignore_patterns,
         progress_callback=progress_callback,
     ):
         return local_dir

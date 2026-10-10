@@ -136,13 +136,17 @@ class TestDispatch:
     def test_supported_variants_constant(self):
         # Phase 1 + 2 + 2.5 (the FLUX/Z-Image/Qwen families), plus the eight
         # families mflux added after them, plus FLUX.2's editor, plus Qwen-Image-2.1,
-        # plus Z-Image-Turbo's union ControlNet — twenty.
+        # plus Z-Image-Turbo's union ControlNet, plus Qwen-Image-Edit as its own
+        # class, plus mflux 0.21–0.22's Qwen-Image-2.1 edit and ControlNet and
+        # Ming-Image — twenty-four.
         assert SUPPORTED_MLX_VARIANTS == frozenset({
             "flux1", "flux1-kontext",
             "flux1-fill", "flux1-redux", "flux1-depth", "flux1-controlnet",
             "flux2", "flux2-edit", "z_image", "z_image-controlnet", "qwen-image",
+            "qwen-image-edit",
             "krea2", "boogu", "ernie-image", "lens", "ideogram4",
             "fibo", "fibo-edit", "seedvr2", "qwen21",
+            "qwen21-edit", "qwen21-controlnet", "ming",
         })
 
     def test_flux2_edit_does_not_demand_an_image_here(self):
@@ -269,9 +273,12 @@ class TestVariantResolution:
         cls, _ = MLXStrategy._resolve_model_and_config("qwen-image", "qwen-image")
         assert cls.__name__ == "QwenImage"
 
-    def test_qwen_image_edit_resolves(self):
-        cls, _ = MLXStrategy._resolve_model_and_config("qwen-image", "qwen-image-edit")
-        assert cls.__name__ == "QwenImage"
+    def test_qwen_image_edit_resolves_to_the_editor(self):
+        """It used to build QwenImage — the text-to-image class — around the
+        edit weights, which redraws a picture instead of following the edit."""
+        cls, config = MLXStrategy._resolve_model_and_config("qwen-image", "qwen-image-edit")
+        assert cls.__name__ == "QwenImageEdit"
+        assert config.model_name == "Qwen/Qwen-Image-Edit-2509"
 
     def test_qwen_image_rejects_bad_name(self):
         with pytest.raises(ValueError, match="qwen-image"):
@@ -289,6 +296,11 @@ class TestVariantResolution:
         ("fibo-edit",   "fibo-edit",          "FIBOEdit"),
         ("seedvr2",     "seedvr2-3b",         "SeedVR2"),
         ("qwen21",      "qwen-image-2.1",     "QwenImage21"),
+        ("qwen-image-edit", "qwen-image-edit",      "QwenImageEdit"),
+        ("qwen-image-edit", "qwen-image-edit-2511", "QwenImageEdit"),
+        ("qwen21-edit", "qwen-image-2.1",     "QwenImage21Edit"),
+        ("qwen21-controlnet", "qwen-image-2.1-controlnet-union", "QwenImage21Controlnet"),
+        ("ming",        "ming-image-design",  "MingImage"),
     ])
     def test_alias_routed_family_resolves(self, variant, alias, expected):
         cls, config = MLXStrategy._resolve_model_and_config(variant, alias)
@@ -810,6 +822,114 @@ class TestControlNet:
         s = self._load("z_image-controlnet")
         with pytest.raises(ValueError, match="control_image"):
             s.generate("a lighthouse", control_type="depth")
+
+
+class _FakeQwenEdit:
+    """QwenImageEdit's shape: references are required, image_path is an img2img start."""
+    calls: list = []
+
+    def __init__(self, quantize=None, model_path=None, lora_paths=None, lora_scales=None,
+                 bake_lora=True, model_config=None):
+        pass
+
+    def generate_image(self, seed, prompt, image_paths, num_inference_steps=4, height=None,
+                       width=None, guidance=4.0, image_path=None, scheduler="linear",
+                       negative_prompt=None):
+        type(self).calls.append({"image_paths": image_paths, "image_path": image_path,
+                                 "scheduler": scheduler})
+        return MagicMock(image=Image.new("RGB", (64, 64), color=(0, 128, 255)))
+
+
+class _FakeQwen21:
+    """QwenImage21Edit's shape, with mflux 0.22's knobs and a constructor precision."""
+    calls: list = []
+    built: list = []
+
+    def __init__(self, quantize=None, model_path=None, model_config=None, lora_paths=None,
+                 lora_scales=None, bake_lora=True, compute_precision=None):
+        type(self).built.append({"compute_precision": compute_precision})
+
+    def generate_image(self, seed, prompt, num_inference_steps=40, height=None, width=None,
+                       guidance=1.0, negative_prompt=None, image_paths=None, mask_image=None,
+                       strength=1.0, use_step_cache=False, enhance_prompt=False, scheduler="linear"):
+        type(self).calls.append({"image_paths": image_paths, "mask_image": mask_image,
+                                 "strength": strength, "scheduler": scheduler,
+                                 "use_step_cache": use_step_cache, "enhance_prompt": enhance_prompt})
+        return MagicMock(image=Image.new("RGB", (64, 64), color=(0, 128, 255)))
+
+
+def _load_fake(cls, variant, name, **params):
+    cfg = _make_config()
+    cfg.parameters = {**cfg.parameters, "mlx_variant": variant, "mlx_model_name": name, **params}
+    s = MLXStrategy()
+    with patch("ollamadiffuser.core.inference.strategies.mlx_strategy.is_apple_silicon",
+               return_value=True), \
+         patch.object(MLXStrategy, "_resolve_model_and_config", return_value=(cls, MagicMock())):
+        assert s.load(cfg, device="mps")
+    return s
+
+
+class TestEditors:
+    def test_old_qwen_image_edit_entries_are_routed_to_the_editor(self):
+        s = _load_fake(_FakeQwenEdit, "qwen-image", "qwen-image-edit")
+        assert s._variant == "qwen-image-edit"
+
+    def test_qwen_image_edit_gets_the_picture_as_a_reference(self, tmp_path):
+        _FakeQwenEdit.calls = []
+        s = _load_fake(_FakeQwenEdit, "qwen-image-edit", "qwen-image-edit-2511")
+        pic = tmp_path / "in.png"
+        Image.new("RGB", (64, 64)).save(pic)
+        s.generate("make it night", image=str(pic))
+        call = _FakeQwenEdit.calls[-1]
+        assert call["image_paths"] == [str(pic)]
+        assert call["image_path"] is None  # not an img2img start as well
+
+    def test_qwen_image_edit_without_a_picture_is_refused(self):
+        s = _load_fake(_FakeQwenEdit, "qwen-image-edit", "qwen-image-edit")
+        with pytest.raises(ValueError, match="image"):
+            s.generate("make it night")
+
+    def test_qwen21_edit_takes_references_mask_strength_and_registry_knobs(self, tmp_path):
+        _FakeQwen21.calls = []
+        _FakeQwen21.built = []
+        s = _load_fake(_FakeQwen21, "qwen21-edit", "qwen-image-2.1",
+                       scheduler="viggle_turbo", use_step_cache=True, compute_precision="float16")
+        a, b, m = (tmp_path / n for n in ("a.png", "b.png", "m.png"))
+        for f in (a, b, m):
+            Image.new("RGB", (64, 64)).save(f)
+        s.generate("put her in the park", image=str(a), images=[str(a), str(b)],
+                   mask_image=str(m), strength=0.6, enhance_prompt=True)
+        call = _FakeQwen21.calls[-1]
+        assert call["image_paths"] == [str(a), str(b)]
+        assert call["mask_image"] == str(m) and call["strength"] == 0.6
+        assert call["scheduler"] == "viggle_turbo" and call["use_step_cache"] is True
+        assert call["enhance_prompt"] is True
+        import mlx.core as mx
+        assert _FakeQwen21.built[-1]["compute_precision"] == mx.float16
+
+    def test_unset_knobs_leave_mflux_defaults_alone(self):
+        """scheduler=None is an error in Qwen-Image-2.1, not the default."""
+        _FakeQwen21.calls = []
+        s = _load_fake(_FakeQwen21, "qwen21-edit", "qwen-image-2.1")
+        s.generate("p")
+        call = _FakeQwen21.calls[-1]
+        assert call["scheduler"] == "linear" and call["use_step_cache"] is False
+
+    def test_a_call_overrides_the_registry_scheduler(self, tmp_path):
+        _FakeQwen21.calls = []
+        s = _load_fake(_FakeQwen21, "qwen21-edit", "qwen-image-2.1", scheduler="viggle_turbo")
+        s.generate("p", scheduler="linear")
+        assert _FakeQwen21.calls[-1]["scheduler"] == "linear"
+
+    def test_constructor_extras_a_class_does_not_take_are_dropped(self):
+        s = _load_fake(_FakeMflux, "flux1", "schnell", compute_precision="float16")
+        assert s._build_args[4] == {}
+
+    def test_qwen21_controlnet_needs_a_control_image_or_an_inpaint_pair(self):
+        s = _load_fake(_FakeQwen21, "qwen21-controlnet", "qwen-image-2.1-controlnet-union")
+        assert s.is_controlnet_pipeline
+        with pytest.raises(ValueError, match="control_image"):
+            s.generate("p")
 
 
 @pytest.mark.skipif(not is_apple_silicon(), reason="MLX only runs on Apple Silicon")

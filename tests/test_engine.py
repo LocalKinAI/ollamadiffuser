@@ -187,6 +187,33 @@ class TestGenericStrategy:
                 sys.modules.pop("diffusers", None)
         assert mock_pipeline_cls.from_pretrained.call_args[0][0] == str(tmp_path / "diffusers")
 
+    def test_generic_strategy_passes_only_what_the_pipeline_takes(self):
+        """QwenImage21Pipeline has no guidance_scale (its CFG is true_cfg_scale);
+        passing one was a TypeError before the first step."""
+        from PIL import Image as PILImage
+        from ollamadiffuser.core.inference.strategies.generic_strategy import GenericPipelineStrategy
+
+        calls = []
+
+        class FakeQwen21:
+            def __call__(self, prompt=None, image=None, negative_prompt=None, true_cfg_scale=1.0,
+                         height=None, width=None, num_inference_steps=40, generator=None):
+                calls.append({"true_cfg_scale": true_cfg_scale, "image": image,
+                              "num_inference_steps": num_inference_steps})
+                return MagicMock(images=[PILImage.new("RGB", (8, 8))])
+
+        strategy = GenericPipelineStrategy()
+        strategy.pipeline = FakeQwen21()
+        strategy.device = "cpu"
+        strategy.model_config = ModelConfig(
+            name="qwen-image-2.1", path="/m", model_type="generic",
+            parameters={"pipeline_class": "QwenImage21Pipeline", "num_inference_steps": 40,
+                        "guidance_scale": 1.0},
+        )
+        picture = PILImage.new("RGB", (8, 8))
+        strategy.generate("make it night", guidance_scale=2.5, image=picture, strength=0.7)
+        assert calls == [{"true_cfg_scale": 2.5, "image": picture, "num_inference_steps": 40}]
+
     def test_generic_strategy_missing_pipeline_class(self):
         from ollamadiffuser.core.inference.strategies.generic_strategy import GenericPipelineStrategy
 

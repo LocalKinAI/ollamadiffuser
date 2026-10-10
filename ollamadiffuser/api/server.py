@@ -38,6 +38,9 @@ class GenerateRequest(BaseModel):
     height: int = 1024
     seed: Optional[int] = None
     response_format: Optional[str] = None  # "b64_json" for JSON with base64, None for raw PNG
+    # An mflux sampling schedule, for the models that take one — e.g.
+    # "viggle_turbo" with Viggle's 6-step LoRA on Qwen-Image-2.1.
+    scheduler: Optional[str] = None
 
 
 class Img2ImgRequest(BaseModel):
@@ -220,6 +223,7 @@ def create_app() -> FastAPI:
                 width=request.width,
                 height=request.height,
                 seed=request.seed,
+                **({"scheduler": request.scheduler} if request.scheduler else {}),
             )
             if request.response_format == "b64_json":
                 return _image_to_json_response(image)
@@ -241,6 +245,7 @@ def create_app() -> FastAPI:
         guidance_scale: Optional[float] = Form(None),
         seed: Optional[int] = Form(None),
         strength: Optional[float] = Form(None),
+        scheduler: Optional[str] = Form(None),
         image: UploadFile = File(...),
         images: Optional[List[UploadFile]] = File(None),
     ):
@@ -285,6 +290,7 @@ def create_app() -> FastAPI:
                 image=input_image,
                 **({"images": references} if len(references) > 1 else {}),
                 **({"strength": strength} if strength is not None else {}),
+                **({"scheduler": scheduler} if scheduler else {}),
             )
             return _image_to_response(result)
         except RuntimeError as e:
@@ -620,7 +626,14 @@ def run_server(host: str = None, port: int = None):
 
     app = create_app()
     logger.info(f"Starting server: http://{host}:{port}")
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    # So `ollamadiffuser ps` can find this server among others running.
+    from ..core.utils import server_registry
+    server_registry.register(host, port, model_manager.get_current_model()
+                             if model_manager.is_model_loaded() else None)
+    try:
+        uvicorn.run(app, host=host, port=port, log_level="info")
+    finally:
+        server_registry.unregister(port)
 
 
 if __name__ == "__main__":

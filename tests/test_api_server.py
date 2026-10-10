@@ -63,6 +63,31 @@ class TestGenerateEndpoint:
         assert "No model loaded" in resp.json()["detail"]
 
 
+class TestScheduler:
+    """Viggle's 6-step LoRA for Qwen-Image-2.1 needs mflux's viggle_turbo schedule."""
+
+    def _engine(self, mm):
+        engine = MagicMock()
+        engine.generate_image.return_value = Image.new("RGB", (8, 8))
+        mm.is_model_loaded.return_value = True
+        mm.loaded_model = engine
+        return engine
+
+    def test_generate_passes_a_scheduler_through(self, client):
+        tc, mm = client
+        engine = self._engine(mm)
+        resp = tc.post("/api/generate", json={"prompt": "a cabin", "steps": 6, "scheduler": "viggle_turbo"})
+        assert resp.status_code == 200
+        kwargs = engine.generate_image.call_args.kwargs
+        assert kwargs["scheduler"] == "viggle_turbo" and kwargs["num_inference_steps"] == 6
+
+    def test_no_scheduler_sends_none(self, client):
+        tc, mm = client
+        engine = self._engine(mm)
+        tc.post("/api/generate", json={"prompt": "a cabin"})
+        assert "scheduler" not in engine.generate_image.call_args.kwargs
+
+
 class TestImg2ImgEndpoint:
     @staticmethod
     def _png(colour):

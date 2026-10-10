@@ -171,6 +171,8 @@ class GenericPipelineStrategy(InferenceStrategy):
             if key in kwargs:
                 gen_kwargs[key] = kwargs[key]
 
+        gen_kwargs = self._fit_to_pipeline(gen_kwargs)
+
         try:
             logger.info(
                 f"Generating with {type(self.pipeline).__name__}: "
@@ -191,6 +193,29 @@ class GenericPipelineStrategy(InferenceStrategy):
         except Exception as e:
             logger.error(f"Generation failed: {e}")
             return self._create_error_image(str(e), prompt)
+
+    def _fit_to_pipeline(self, gen_kwargs: dict) -> dict:
+        """Keep the arguments this pipeline's __call__ takes.
+
+        Pipelines differ: QwenImage21Pipeline has no guidance_scale (its CFG is
+        true_cfg_scale) and no strength, and calling it with either is a
+        TypeError before a single step runs. A guidance a pipeline can only
+        take as true_cfg_scale is passed under that name.
+        """
+        import inspect
+        try:
+            params = inspect.signature(self.pipeline.__call__).parameters
+        except (TypeError, ValueError):
+            return gen_kwargs
+        if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+            return gen_kwargs
+        fitted = dict(gen_kwargs)
+        if "guidance_scale" not in params and "true_cfg_scale" in params and "guidance_scale" in fitted:
+            fitted["true_cfg_scale"] = fitted.pop("guidance_scale")
+        dropped = [k for k in fitted if k not in params]
+        if dropped:
+            logger.debug(f"{type(self.pipeline).__name__} takes no {dropped}; not passing them")
+        return {k: v for k, v in fitted.items() if k in params}
 
     @staticmethod
     def _sanitize_image(image: Image.Image) -> Image.Image:

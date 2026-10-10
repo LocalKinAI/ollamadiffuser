@@ -112,9 +112,15 @@ def run(model_name: str, host: Optional[str], port: Optional[int]):
     except KeyboardInterrupt:
         rprint("\n[yellow]Server stopped[/yellow]")
         model_manager.unload_model()
-        # Clear the current model from settings when server stops
-        settings.current_model = None
-        settings.save_config()
+        # Clear the current model from settings when server stops — if it is
+        # still this one: another `run` may have started since and set its own.
+        try:
+            settings.load_config()
+        except Exception:
+            pass
+        if settings.current_model in (None, model_name):
+            settings.current_model = None
+            settings.save_config()
 
 
 @click.command()
@@ -561,49 +567,39 @@ def rm(model_name: str):
 
 @click.command()
 def ps():
-    """Show currently running model"""
-    current_model = model_manager.get_current_model()
-    server_running = model_manager.is_server_running()
+    """Show the running model servers"""
+    from ..core.utils import server_registry
 
-    if current_model:
-        rprint(f"[green]Current model: {current_model}[/green]")
+    servers = server_registry.running()
+    seen = {s.get("port") for s in servers}
+    # Servers started by earlier versions left no record; the default port
+    # still answers for them.
+    if settings.server.port not in seen and model_manager.is_server_running():
+        servers.append({"host": settings.server.host, "port": settings.server.port, "pid": None})
 
-        # Check server status
-        if server_running:
-            rprint(f"[green]Server status: Running on {settings.server.host}:{settings.server.port}[/green]")
+    if not servers:
+        rprint("[yellow]No model server is running[/yellow]")
+        rprint("[dim]Use 'ollamadiffuser run <model>' to start one[/dim]")
+        return
 
-            # Try to get model info from the running server
-            try:
-                import requests
-                response = requests.get(f"http://{settings.server.host}:{settings.server.port}/api/models/running", timeout=2)
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get('loaded'):
-                        info = data.get('info', {})
-                        rprint(f"Device: {info.get('device', 'Unknown')}")
-                        rprint(f"Type: {info.get('type', 'Unknown')}")
-                        rprint(f"Variant: {info.get('variant', 'Unknown')}")
-                    else:
-                        rprint("[yellow]Model loaded but not active in server[/yellow]")
-            except:
-                pass
+    table = Table(title=f"{len(servers)} running server{'s' if len(servers) != 1 else ''}")
+    table.add_column("Port", style="cyan")
+    table.add_column("Model", style="green")
+    table.add_column("Type")
+    table.add_column("Device")
+    table.add_column("PID", style="dim")
+    for server in servers:
+        answer = server_registry.ask(server.get("host"), server.get("port"))
+        if answer is None:
+            model, kind, device = "[red]not answering[/red]", "", ""
+        elif answer.get("loaded"):
+            info = answer.get("info") or {}
+            model = answer.get("model") or info.get("name") or "?"
+            kind, device = str(info.get("type", "")), str(info.get("device", ""))
         else:
-            rprint("[yellow]Server status: Not running[/yellow]")
-            rprint("[dim]Model is set as current but server is not active[/dim]")
-
-        # Show model info from local config
-        model_info = model_manager.get_model_info(current_model)
-        if model_info:
-            rprint(f"Model type: {model_info.get('model_type', 'Unknown')}")
-            if model_info.get('installed'):
-                rprint(f"Size: {model_info.get('size', 'Unknown')}")
-    else:
-        if server_running:
-            rprint("[yellow]Server is running but no model is loaded[/yellow]")
-            rprint(f"[green]Server status: Running on {settings.server.host}:{settings.server.port}[/green]")
-        else:
-            rprint("[yellow]No model is currently running[/yellow]")
-            rprint("[dim]Use 'ollamadiffuser run <model>' to start a model[/dim]")
+            model, kind, device = "[yellow](no model loaded)[/yellow]", "", ""
+        table.add_row(str(server.get("port")), model, kind, device, str(server.get("pid") or ""))
+    console.print(table)
 
 
 @click.command()

@@ -610,7 +610,8 @@ models:
       commercial_use: true
   qwen-image-2.1-mlx:
     # A new architecture (Qwen3-VL-8B text encoder, new VAE), not another
-    # qwen-image checkpoint — hence its own mflux family, qwen21 (mflux 0.20.0+).
+    # qwen-image checkpoint — hence its own mflux family, qwen21 (mflux 0.20.0+;
+    # editing, LoRAs and the ControlNet since 0.21–0.22).
     # The repo holds only what mflux reads (transformer, text_encoder, vae,
     # processor), so no allow_patterns.
     repo_id: Qwen/Qwen-Image-2.1
@@ -633,20 +634,25 @@ models:
       disk_space_gb: 34
       supported_devices:
       - MPS
-      performance_notes: 'Measured on an M3 Ultra (96 GB), 1024x1024, 25 steps: 104-112 s per
-        image, 45.8 GB peak. 4-bit quantization measured the same peak and the same speed, so
-        there is no reason to use it. Renders Chinese text correctly.'
+      performance_notes: 'Measured on an M3 Ultra (96 GB) with mflux 0.20, 1024x1024, 25 steps:
+        104-112 s per image, 45.8 GB peak; mflux 0.22 is faster and lighter (see the changelog).
+        4-bit quantization measured the same peak and the same speed, so there is no reason to use
+        it. Renders Chinese text correctly. Takes LoRAs: Viggle''s turbo LoRA with
+        scheduler=viggle_turbo draws in 6 steps instead of 40.'
     license_info:
       type: Qwen Research License (non-commercial)
       requires_agreement: false
       commercial_use: false
   qwen-image-edit-mlx:
     # Same story: mflux's `qwen-image-edit` alias is the 2509 checkpoint.
+    # mlx_variant qwen-image-edit is mflux's editor class, which takes the
+    # picture as a reference. This entry used to build the text-to-image
+    # class around these weights, which redrew the picture instead.
     repo_id: Qwen/Qwen-Image-Edit-2509
     model_type: mlx
     variant: mlx-q8
     parameters:
-      mlx_variant: qwen-image
+      mlx_variant: qwen-image-edit
       mlx_model_name: qwen-image-edit
       quantize: 8
       num_inference_steps: 30
@@ -659,17 +665,138 @@ models:
       disk_space_gb: 58
       supported_devices:
       - MPS
-      performance_notes: Apple Silicon native Qwen-Image-Edit (20B) at 8-bit MLX. Image-editing companion
-        to qwen-image-mlx. M1 32GB+ only. Apache 2.0.
+      performance_notes: Apple Silicon native Qwen-Image-Edit 2509 (20B) at 8-bit MLX — instruction
+        editing with one or more reference pictures (image= and images=). qwen-image-edit-2511-mlx is
+        the newer checkpoint. M1 32GB+ only. Apache 2.0.
     license_info:
       type: Apache 2.0
       requires_agreement: false
       commercial_use: true
+  qwen-image-edit-2511-mlx:
+    # mflux 0.22 runs 2511 as itself: its own alias, and the reference images
+    # read at timestep 0 as the checkpoint expects (its zero_cond_t). Before
+    # 0.22 that name loaded 2509, which is why qwen-image-edit-2511 went
+    # through diffusers.
+    repo_id: Qwen/Qwen-Image-Edit-2511
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: qwen-image-edit
+      mlx_model_name: qwen-image-edit-2511
+      quantize: 8
+      # The model card's 40 steps; guidance 4.0 is its true CFG, which runs
+      # because the engine sends a negative prompt.
+      num_inference_steps: 40
+      guidance_scale: 4.0
+    hardware_requirements:
+      min_vram_gb: 18
+      recommended_vram_gb: 24
+      min_ram_gb: 32
+      recommended_ram_gb: 64
+      disk_space_gb: 58
+      supported_devices:
+      - MPS
+      performance_notes: Qwen-Image-Edit-2511 (20B) at 8-bit MLX — Qwen's current edit model on Apple
+        Silicon, with better character and group-photo consistency than 2509 and popular LoRAs built in.
+        Pass the picture as image=, more references as images=. The NVIDIA counterpart is
+        qwen-image-edit-2511. Apache 2.0.
+    license_info:
+      type: Apache 2.0
+      requires_agreement: false
+      commercial_use: true
+  qwen-image-2.1-edit-mlx:
+    # The same weights as qwen-image-2.1-mlx, built as mflux 0.21's editor
+    # (QwenImage21Edit): pictures go in as references, through the Qwen3-VL
+    # text encoder, rather than as an img2img start.
+    repo_id: Qwen/Qwen-Image-2.1
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: qwen21-edit
+      mlx_model_name: qwen-image-2.1
+      quantize: 8
+      num_inference_steps: 40
+      # Guidance-free, as for generation: mflux refuses guidance below 1.
+      guidance_scale: 1.0
+    hardware_requirements:
+      min_vram_gb: 46
+      recommended_vram_gb: 64
+      min_ram_gb: 64
+      recommended_ram_gb: 96
+      disk_space_gb: 34
+      supported_devices:
+      - MPS
+      performance_notes: Qwen-Image-2.1 instruction editing at 8-bit MLX — up to ten reference pictures
+        (image= and images=), a mask_image= to confine the edit, strength= for subtler edits,
+        enhance_prompt=true to have the model rewrite the instruction against the pictures. Output is
+        RGBA. Takes LoRAs, including Viggle's 6-step turbo LoRA with scheduler=viggle_turbo. Research
+        licence.
+    license_info:
+      type: Qwen Research License (non-commercial)
+      requires_agreement: false
+      commercial_use: false
+  qwen-image-2.1-controlnet-mlx:
+    # pull fetches Qwen-Image-2.1; mflux downloads the 7.5 GB ControlNet from
+    # alibaba-pai the first time it loads, as for the Z-Image ControlNet.
+    repo_id: Qwen/Qwen-Image-2.1
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: qwen21-controlnet
+      mlx_model_name: qwen-image-2.1-controlnet-union
+      quantize: 8
+      num_inference_steps: 40
+      guidance_scale: 1.0
+    hardware_requirements:
+      min_vram_gb: 46
+      recommended_vram_gb: 64
+      min_ram_gb: 64
+      recommended_ram_gb: 96
+      disk_space_gb: 42
+      supported_devices:
+      - MPS
+      performance_notes: Qwen-Image-2.1 with alibaba-pai's Fun ControlNet Union at 8-bit MLX — one
+        checkpoint follows canny, depth, pose and five more kinds of control image (control_image=,
+        controlnet_strength=), and inpaints with image= plus mask_image=. Research licence.
+    license_info:
+      type: Qwen Research License (non-commercial)
+      requires_agreement: false
+      commercial_use: false
+  ming-image-design-mlx:
+    # mflux 0.21+ (MingImage). The repo holds only what it reads: the mllm
+    # (a 16B MoE text encoder), connector, mlp, transformer and VAE.
+    repo_id: inclusionAI/Ming-Image-0.1-Design
+    model_type: mlx
+    variant: mlx-q8
+    parameters:
+      mlx_variant: ming
+      mlx_model_name: ming-image-design
+      quantize: 8
+      # The model card: 12 steps, CFG 1.0; 2048x2048 recommended, 1024 faster.
+      num_inference_steps: 12
+      guidance_scale: 1.0
+      # text_encoder_quantize: 8 quantizes the 34 GB text encoder too, for
+      # smaller Macs — not measured here, so off by default.
+    hardware_requirements:
+      min_vram_gb: 48
+      recommended_vram_gb: 64
+      min_ram_gb: 64
+      recommended_ram_gb: 96
+      disk_space_gb: 53
+      supported_devices:
+      - MPS
+      performance_notes: inclusionAI's Ming-Image-0.1-Design (6B) at 8-bit MLX — UI mock-ups,
+        infographics, posters and other text-rich layouts, with RGBA output (ask for a transparent
+        background in the prompt). Most of the download and memory is its 34 GB text encoder; set
+        text_encoder_quantize to 8 in your models.yaml to shrink it. MIT.
+    license_info:
+      type: MIT
+      requires_agreement: false
+      commercial_use: true
   qwen-image-edit-2511:
-    # Through diffusers, not mflux: 2511 sets zero_cond_t in its transformer
-    # config, which diffusers implements and mflux does not read. Loaded by
-    # mflux's qwen-image-edit class, these weights would run as 2509 without
-    # saying so.
+    # The diffusers entry, for NVIDIA; on a Mac, qwen-image-edit-2511-mlx.
+    # It came first because 2511 sets zero_cond_t in its transformer config,
+    # which diffusers implements and mflux before 0.22 did not read.
     repo_id: Qwen/Qwen-Image-Edit-2511
     model_type: generic
     variant: fp16
@@ -1915,6 +2042,64 @@ models:
       type: Apache 2.0
       requires_agreement: false
       commercial_use: true
+  qwen-image-2.1:
+    # diffusers 0.41+ (QwenImage21Pipeline): text-to-image, editing with the
+    # pictures as image=, RGBA output. The Apple Silicon versions are the
+    # qwen-image-2.1-*-mlx entries.
+    repo_id: Qwen/Qwen-Image-2.1
+    model_type: generic
+    variant: fp16
+    parameters:
+      pipeline_class: QwenImage21Pipeline
+      num_inference_steps: 40
+      # Its CFG is true_cfg_scale, off at 1.0, and the model samples without it.
+      guidance_scale: 1.0
+      torch_dtype: bfloat16
+      enable_cpu_offload: true
+    hardware_requirements:
+      min_vram_gb: 24
+      recommended_vram_gb: 40
+      min_ram_gb: 48
+      recommended_ram_gb: 64
+      disk_space_gb: 34
+      supported_devices:
+      - CUDA
+      performance_notes: Qwen-Image-2.1 (7B DiT, Qwen3-VL-8B encoder) in bf16 through diffusers —
+        generation, and editing when a picture is passed (/api/generate/img2img). Needs diffusers
+        0.41 or newer. Research licence.
+    license_info:
+      type: Qwen Research License (non-commercial)
+      requires_agreement: false
+      commercial_use: false
+  qwen-image-2.1-turbo:
+    # Qwen's own distilled checkpoint (2026-10-09). Its model_index carries an
+    # 8-step sigma schedule that the pipeline uses whatever step count it is
+    # given. mflux does not know it yet, so there is no -mlx entry.
+    repo_id: Qwen/Qwen-Image-2.1-Turbo
+    model_type: generic
+    variant: fp16
+    parameters:
+      pipeline_class: QwenImage21Pipeline
+      num_inference_steps: 8
+      guidance_scale: 1.0
+      torch_dtype: bfloat16
+      enable_cpu_offload: true
+    hardware_requirements:
+      min_vram_gb: 24
+      recommended_vram_gb: 40
+      min_ram_gb: 48
+      recommended_ram_gb: 64
+      disk_space_gb: 33
+      supported_devices:
+      - CUDA
+      performance_notes: Qwen-Image-2.1-Turbo, the official 8-step distillation, through diffusers —
+        generation and editing like qwen-image-2.1 at about a fifth of the steps; its card shows
+        2048-class resolutions (1680x2512 portrait, 2048x2048 edits). Needs diffusers 0.41 or newer.
+        Research licence.
+    license_info:
+      type: Qwen Research License (non-commercial)
+      requires_agreement: false
+      commercial_use: false
   z-anime:
     # The repo is mostly single-file checkpoints for ComfyUI (bf16, fp8,
     # distilled); the diffusers tree is the diffusers/ folder.
