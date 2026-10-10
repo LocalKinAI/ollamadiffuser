@@ -7,6 +7,8 @@ mock the mflux model class so no weights need to download.
 from __future__ import annotations
 
 import importlib.util
+import json
+import struct
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -896,8 +898,8 @@ class _FakeQwen21:
         return MagicMock(image=Image.new("RGB", (64, 64), color=(0, 128, 255)))
 
 
-def _load_fake(cls, variant, name, **params):
-    cfg = _make_config()
+def _load_fake(cls, variant, name, path="/tmp/unused", **params):
+    cfg = _make_config(path=path)
     cfg.parameters = {**cfg.parameters, "mlx_variant": variant, "mlx_model_name": name, **params}
     s = MLXStrategy()
     with patch("ollamadiffuser.core.inference.strategies.mlx_strategy.is_apple_silicon",
@@ -977,6 +979,127 @@ class TestEditors:
         assert s.is_controlnet_pipeline
         with pytest.raises(ValueError, match="control_image"):
             s.generate("p")
+
+
+def _write_safetensors(path, tensors):
+    """A minimal safetensors file of float32 tensors, given as {name: [values]}."""
+    header, data = {}, b""
+    for name, values in tensors.items():
+        raw = struct.pack(f"<{len(values)}f", *values)
+        header[name] = {"dtype": "F32", "shape": [len(values)],
+                        "data_offsets": [len(data), len(data) + len(raw)]}
+        data += raw
+    header["__metadata__"] = {"format": "pt"}
+    blob = json.dumps(header).encode()
+    blob += b" " * (-len(blob) % 8)  # the format pads its header to 8 bytes
+    path.write_bytes(struct.pack("<Q", len(blob)) + blob + data)
+
+
+class TestSingleFileTextEncoder:
+    """Qwen-Image-2.1-Turbo ships its text encoder as one file and no shard index."""
+
+    @staticmethod
+    def _encoder(tmp_path):
+        te = tmp_path / "model" / "text_encoder"
+        te.mkdir(parents=True)
+        _write_safetensors(te / "model.safetensors", {"b.bias": [3.0], "a.weight": [1.0, 2.0]})
+        return te
+
+    def test_the_index_names_the_file_for_every_tensor(self, tmp_path):
+        te = self._encoder(tmp_path)
+        assert mlx_strategy.complete_shard_index(te) is True
+        index = json.loads((te / "model.safetensors.index.json").read_text())
+        assert index["weight_map"] == {"a.weight": "model.safetensors", "b.bias": "model.safetensors"}
+        assert index["metadata"]["total_size"] == 12
+        assert not list(te.glob("*.tmp"))
+
+    def test_an_index_already_there_and_sharded_encoders_are_left_alone(self, tmp_path):
+        te = self._encoder(tmp_path)
+        (te / "model.safetensors.index.json").write_text("{}")
+        assert mlx_strategy.complete_shard_index(te) is False
+        assert (te / "model.safetensors.index.json").read_text() == "{}"
+        shards = tmp_path / "sharded"
+        shards.mkdir()
+        _write_safetensors(shards / "model-00001-of-00002.safetensors", {"a": [1.0]})
+        assert mlx_strategy.complete_shard_index(shards) is False
+        assert not (shards / "model.safetensors.index.json").exists()
+        assert mlx_strategy.complete_shard_index(tmp_path / "missing") is False
+
+    def test_a_file_that_is_not_safetensors_gets_no_index(self, tmp_path):
+        te = tmp_path / "text_encoder"
+        te.mkdir()
+        (te / "model.safetensors").write_bytes(b"\xff" * 64)
+        assert mlx_strategy.complete_shard_index(te) is False
+        assert not (te / "model.safetensors.index.json").exists()
+        assert not list(te.glob("*.tmp"))
+
+    def test_loading_a_qwen21_checkpoint_indexes_its_encoder(self, tmp_path):
+        te = self._encoder(tmp_path)
+        _load_fake(_FakeQwen21, "qwen21", "qwen-image-2.1", path=str(te.parent))
+        assert (te / "model.safetensors.index.json").is_file()
+
+    def test_families_that_glob_their_weights_get_no_index(self, tmp_path):
+        te = self._encoder(tmp_path)
+        _load_fake(_FakeQwen21, "qwen21-edit", "qwen-image-2.1", path=str(te.parent))
+        _load_fake(_FakeMflux, "flux1", "schnell", path=str(te.parent))
+        assert not (te / "model.safetensors.index.json").exists()
+
+    @_needs_mflux
+    def test_mflux_reads_the_encoder_through_it(self, tmp_path):
+        from mflux.models.common.weights.loading.weight_loader import WeightLoader
+        te = self._encoder(tmp_path)
+        with pytest.raises(FileNotFoundError):
+            WeightLoader._load_multi_json(te)  # what mflux 0.22 did with the Turbo
+        mlx_strategy.complete_shard_index(te)
+        weights = WeightLoader._load_multi_json(te)
+        assert sorted(weights) == ["a.weight", "b.bias"]
+        assert weights["a.weight"].tolist() == [1.0, 2.0]
+
+
+class TestMLXCacheBound:
+    """MLX keeps freed memory up to the machine's size unless it is told otherwise."""
+
+    @staticmethod
+    def _fake_mlx(monkeypatch):
+        import sys
+        import types
+        limits = []
+        core = types.ModuleType("mlx.core")
+        core.set_cache_limit = lambda n: limits.append(n) or 0
+        pkg = types.ModuleType("mlx")
+        pkg.core = core
+        monkeypatch.setitem(sys.modules, "mlx", pkg)
+        monkeypatch.setitem(sys.modules, "mlx.core", core)
+        monkeypatch.delenv("OLLAMADIFFUSER_MLX_KEEP_CACHE", raising=False)
+        monkeypatch.delenv("OLLAMADIFFUSER_MLX_CACHE_LIMIT_GB", raising=False)
+        return limits
+
+    def test_the_cache_is_held_to_2_gb_by_default(self, monkeypatch):
+        limits = self._fake_mlx(monkeypatch)
+        mlx_strategy._bound_mlx_cache()
+        assert limits == [2_000_000_000]
+
+    def test_the_bound_can_be_set_and_a_bad_value_is_ignored(self, monkeypatch, caplog):
+        limits = self._fake_mlx(monkeypatch)
+        monkeypatch.setenv("OLLAMADIFFUSER_MLX_CACHE_LIMIT_GB", "8")
+        mlx_strategy._bound_mlx_cache()
+        monkeypatch.setenv("OLLAMADIFFUSER_MLX_CACHE_LIMIT_GB", "lots")
+        with caplog.at_level("WARNING"):
+            mlx_strategy._bound_mlx_cache()
+        assert limits == [8_000_000_000, 2_000_000_000]
+        assert any("not a number" in r.message for r in caplog.records)
+
+    def test_keep_cache_leaves_mlx_its_own(self, monkeypatch):
+        limits = self._fake_mlx(monkeypatch)
+        monkeypatch.setenv("OLLAMADIFFUSER_MLX_KEEP_CACHE", "1")
+        mlx_strategy._bound_mlx_cache()
+        assert limits == []
+
+    def test_loading_a_model_bounds_it(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(mlx_strategy, "_bound_mlx_cache", lambda: calls.append(1))
+        _load_fake(_FakeMflux, "flux1", "schnell")
+        assert calls == [1]
 
 
 @pytest.mark.skipif(not is_apple_silicon(), reason="MLX only runs on Apple Silicon")

@@ -28,11 +28,13 @@ Tracking issue: https://github.com/LocalKinAI/ollamadiffuser/issues/7
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import logging
 import os
 import platform
 from pathlib import Path
 import random
+import struct
 from typing import Optional
 
 from PIL import Image
@@ -134,6 +136,11 @@ _INIT_EXTRAS = {
 # editor: mflux accepts only its own schedules there.
 _SAMPLE_SIGMA_VARIANTS = frozenset({"qwen21"})
 
+# Families whose text encoder mflux reads through the shard index beside it
+# (WeightLoader's multi_json mode), which a single-file export lacks — see
+# complete_shard_index().
+_SHARD_INDEX_VARIANTS = frozenset({"qwen-image", "qwen-image-edit", "qwen21"})
+
 # Registry parameters handed to generate_image() when it takes them, unless
 # the call names its own value.
 _GENERATE_EXTRAS = ("scheduler", "step_cache_ratio", "use_step_cache", "output_resolution",
@@ -206,6 +213,40 @@ def _release_mlx_memory() -> None:
         logger.debug(f"Could not clear the MLX cache: {e}")
 
 
+_DEFAULT_CACHE_LIMIT_GB = 2.0
+
+
+def _bound_mlx_cache() -> None:
+    """Hold what MLX keeps of freed memory to a couple of GB while it works.
+
+    MLX caches freed buffers up to its memory limit, which by default is the
+    size of the machine (97.9 GB on the 96 GB M3 Ultra), so clearing the
+    cache after each image still let one image take far more than it used.
+    Measured with Qwen-Image-2.1-Turbo at 8 bits, 1024×1024, beside 45 GB of
+    other services: MLX's peak is 38.7 GB either way, but with its default
+    cache a warm image took the box from 28 GB free to under 5 GB before the
+    test's guard stopped it — and a first image also kept the full-precision
+    weights mflux quantizes away (about 14 GB). Held to 2 GB, every image
+    finished, its steps at the pace they ran unbounded (3.88 s against
+    3.84 s on a first image). ``OLLAMADIFFUSER_MLX_CACHE_LIMIT_GB`` sets the
+    bound; ``OLLAMADIFFUSER_MLX_KEEP_CACHE`` leaves MLX's own.
+    """
+    if os.environ.get("OLLAMADIFFUSER_MLX_KEEP_CACHE"):
+        return
+    raw = os.environ.get("OLLAMADIFFUSER_MLX_CACHE_LIMIT_GB")
+    limit_gb = _DEFAULT_CACHE_LIMIT_GB
+    if raw:
+        try:
+            limit_gb = max(float(raw), 0.0)
+        except ValueError:
+            logger.warning(f"Ignoring OLLAMADIFFUSER_MLX_CACHE_LIMIT_GB={raw!r}: not a number of GB")
+    try:
+        import mlx.core as mx
+        mx.set_cache_limit(int(limit_gb * 1e9))
+    except Exception as e:
+        logger.debug(f"Could not set the MLX cache limit: {e}")
+
+
 def _available_memory() -> Optional[int]:
     try:
         import psutil
@@ -230,6 +271,50 @@ def looks_like_model_dir(path: Optional[str]) -> bool:
         if (folder / marker).is_file():
             return True
     return any(folder.glob("*.safetensors")) or any(folder.glob("*/*.safetensors"))
+
+
+def complete_shard_index(folder) -> bool:
+    """Write the shard index a single-file component lacks; True when one was written.
+
+    mflux reads the Qwen-Image and Qwen-Image-2.1 text encoders through
+    ``model.safetensors.index.json``, the map transformers writes beside
+    shards. Qwen-Image-2.1-Turbo ships its text encoder as one
+    ``model.safetensors`` — the same 750 tensors as the base model's four
+    shards — with no index, and mflux 0.22 stopped at the missing file. The
+    index only has to name that file for every tensor, and the file's own
+    header lists them. It goes in the model's folder, beside the weights,
+    which it leaves as they are.
+    """
+    folder = Path(folder)
+    single = folder / "model.safetensors"
+    index = folder / "model.safetensors.index.json"
+    if index.exists() or not single.is_file():
+        return False
+    tmp = index.with_name(index.name + ".tmp")
+    try:
+        with single.open("rb") as f:
+            (length,) = struct.unpack("<Q", f.read(8))
+            if length > 100_000_000:
+                raise ValueError("not a safetensors header")
+            header = json.loads(f.read(length))
+        tensors = {k: v for k, v in header.items() if k != "__metadata__"}
+        if not tensors:
+            raise ValueError("no tensors in the header")
+        total = sum(v["data_offsets"][1] - v["data_offsets"][0] for v in tensors.values())
+        tmp.write_text(json.dumps({
+            "metadata": {"total_size": total},
+            "weight_map": {name: single.name for name in sorted(tensors)},
+        }))
+        os.replace(tmp, index)
+    except (OSError, ValueError, KeyError, TypeError, IndexError, struct.error) as e:
+        logger.warning(f"Could not index {single} for mflux, which needs it to load this model: {e}")
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        return False
+    logger.info(f"Indexed {single} for mflux ({len(tensors)} tensors)")
+    return True
 
 
 # --------------------------------------------------------------------------
@@ -363,6 +448,8 @@ class MLXStrategy(InferenceStrategy):
         local_dir = str(local_dir) if looks_like_model_dir(local_dir) else None
         if local_dir:
             logger.info(f"Using the downloaded weights at {local_dir}")
+            if variant in _SHARD_INDEX_VARIANTS:
+                complete_shard_index(Path(local_dir) / "text_encoder")
         self._build_args = (model_cls, quantize, mflux_config, local_dir,
                             self._init_extras(model_cls, params))
         self._fixed_schedule = None
@@ -376,6 +463,7 @@ class MLXStrategy(InferenceStrategy):
                 except ImportError as e:
                     logger.warning(f"Could not register the checkpoint's schedule with mflux: {e}")
         self._loras = []
+        _bound_mlx_cache()
         try:
             self._mlx_model = self._construct([])
         except Exception as e:

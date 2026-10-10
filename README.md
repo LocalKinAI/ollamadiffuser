@@ -10,8 +10,8 @@
 
 - **Edit with Qwen-Image-2.1 on Apple Silicon.** `qwen-image-2.1-edit-mlx` takes up to ten reference pictures, a mask, an edit strength and prompt rewriting, from the same weights as `qwen-image-2.1-mlx`. Its ControlNet (`qwen-image-2.1-controlnet-mlx`: canny, depth, pose and five more, plus inpainting) and Qwen-Image-Edit-2511 (`qwen-image-edit-2511-mlx`) run natively too. Needs mflux 0.22, now the minimum.
 - **Qwen-Image-2.1 in 6 steps.** Load Viggle's turbo LoRA and pass `scheduler=viggle_turbo` — see [LoRAs on Apple Silicon](#loras-on-apple-silicon-mlx-models).
-- **New:** `ming-image-design-mlx` (UI, posters and infographics with transparent backgrounds, MIT); Qwen's own 8-step **Qwen-Image-2.1-Turbo** on both platforms — `qwen-image-2.1-turbo-mlx` (sampled on the schedule the checkpoint ships with; mflux has no entry for it yet) and `qwen-image-2.1-turbo` through diffusers 0.41 — and `qwen-image-2.1` on NVIDIA.
-- **Fixed:** `qwen-image-edit-mlx` redrew the picture instead of editing it — it was built as the text-to-image class. The MCP server didn't start with mcp 2.x, which `ollamadiffuser enable mcp` installs.
+- **New:** `ming-image-design-mlx` (UI, posters and infographics with transparent backgrounds, MIT); Qwen's own 8-step **Qwen-Image-2.1-Turbo** on both platforms — `qwen-image-2.1-turbo-mlx` (sampled on the schedule the checkpoint ships with, which mflux has no entry for; 32 s an image at 1024² on an M3 Ultra) and `qwen-image-2.1-turbo` through diffusers 0.41 — and `qwen-image-2.1` on NVIDIA.
+- **Fixed:** `qwen-image-edit-mlx` redrew the picture instead of editing it — it was built as the text-to-image class. The MCP server didn't start with mcp 2.x, which `ollamadiffuser enable mcp` installs. MLX models hold MLX's buffer cache to 2 GB (`OLLAMADIFFUSER_MLX_CACHE_LIMIT_GB`): by default MLX lets it grow to the size of the machine, and one 1024² Qwen-Image-2.1-Turbo image took a 96 GB Mac from 28 GB free to under 5 GB, though it needed 15.5 GB.
 - **Better:** `pull` links files another installed entry already downloaded from the same repo, so an editor next to its generator costs no second download. `ollamadiffuser ps` lists every running server, not just the last one started. MCP's `generate_image` also returns the saved file's path as text, and uses a running server that already holds the model instead of loading a second copy.
 
 ### v2.1.1 — ComfyUI nodes
@@ -427,7 +427,7 @@ MLX entries run through [mflux](https://github.com/filipstrand/mflux) on Apple S
 | `z-anime-mlx` | Z-Anime (anime fine-tune of Z-Image base) | Q8 | 8 GB | 12 GB | Apache 2.0 |
 | `qwen-image-mlx` | Qwen-Image (20B) | Q8 | 22 GB | 24 GB | Apache 2.0 |
 | `qwen-image-2.1-mlx` | Qwen-Image-2.1 (mflux 0.20+) | Q8 | 34 GB | 64 GB (measured 45.8 GB peak) | Qwen Research (non-commercial) |
-| `qwen-image-2.1-turbo-mlx` | Qwen-Image-2.1-Turbo (official 8-step, text-to-image) | Q8 | 33 GB | 64 GB | Qwen Research (non-commercial) |
+| `qwen-image-2.1-turbo-mlx` | Qwen-Image-2.1-Turbo (official 8-step, text-to-image) | Q8 | 33 GB | 64 GB (measured 38.7 GB peak) | Qwen Research (non-commercial) |
 | `ming-image-design-mlx` | Ming-Image-0.1-Design (6B, RGBA, 12 steps) | Q8 | 53 GB | 64 GB | MIT |
 | `boogu-image-turbo-mlx` | Boogu Image (10B, 4-step DMD) | Q8 | 12 GB | 16 GB | Apache 2.0 |
 | `ernie-image-turbo-mlx` | ERNIE-Image (8B, 8-step) | Q8 | 10 GB | 14 GB | Apache 2.0 |
@@ -1038,6 +1038,10 @@ curl -X POST http://localhost:8000/api/generate \
 # CPU offloading is automatic
 # Close other applications to free memory
 # Use basic preprocessors instead of advanced ones
+
+# MLX models (Apple Silicon) hold MLX's buffer cache to 2 GB; on a Mac with
+# memory to spare, a larger bound (in GB) lets MLX reuse more of it
+OLLAMADIFFUSER_MLX_CACHE_LIMIT_GB=8 ollamadiffuser run qwen-image-2.1-turbo-mlx
 ```
 
 ### Platform-Specific Issues

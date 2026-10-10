@@ -34,8 +34,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   config has shift 1.0 and no dynamic shifting — then 0, with mflux's Euler
   step. Any qwen21 checkpoint that ships a table gets it, unless an entry or
   a call names a scheduler. Text-to-image only: mflux's 2.1 editor accepts
-  only its own schedules. Not run yet — the 32.4 GB download shares no file
-  with the base model.
+  only its own schedules. **Measured on the M3 Ultra**, 1024×1024, 8 bits:
+  31.9 s an image warm (8 steps at 3.77 s), 36.2 s for the first, 38.7 GB
+  MLX peak — the VAE decode's; the steps peak at 24.3 GB. 海边小屋 on the
+  sign came out clean, where the same 8 steps on mflux's linear schedule
+  gave a smeared, busier picture: the table matters. Its 30.2 GB were
+  hard-linked from the Hugging Face cache by the code `pull` uses, nothing
+  downloaded twice. 1680×2512, a size from its card, wasn't tried: scaled
+  from the 1024² decode it would want about 68 GB on top of the model.
 - **`ming-image-design-mlx`** — inclusionAI's Ming-Image-0.1-Design: UI,
   posters and infographics, with transparent backgrounds. 12 steps, MIT.
 - **Qwen-Image-2.1 takes LoRAs** through the MLX LoRA path, and a new
@@ -69,6 +75,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔧 Fixed
 
+- **Qwen-Image-2.1-Turbo didn't load on a Mac.** Its text encoder is one
+  17.5 GB `model.safetensors` — the same 750 tensors as the base model's four
+  shards, names, shapes and bf16 alike — with no `model.safetensors.index.json`,
+  and mflux 0.22 reads the Qwen-Image and Qwen-Image-2.1 text encoders only
+  through that index, so it stopped at a missing file. The strategy now writes
+  the index, from the file's own header and beside the weights, when it is
+  missing (`complete_shard_index`); the weights are left as they are.
+- **An MLX image could take far more memory than it used.** MLX keeps freed
+  buffers for reuse up to its memory limit, which by default is the size of
+  the machine (97.9 GB on the 96 GB M3 Ultra), so emptying the cache after
+  each image (below) didn't stop one image from growing it. With
+  Qwen-Image-2.1-Turbo at 1024×1024 beside 45 GB of other services, MLX's
+  own peak was 38.7 GB, but a warm image took the box from 28 GB free to
+  under 5 GB before the test's guard stopped it, and a first image also
+  kept the ~14 GB of full-precision weights mflux quantizes away. MLX models
+  now hold the cache to 2 GB: every image finished, its steps at the pace
+  they ran unbounded (3.88 s against 3.84 s on a first image).
+  `OLLAMADIFFUSER_MLX_CACHE_LIMIT_GB` sets the bound;
+  `OLLAMADIFFUSER_MLX_KEEP_CACHE=1` leaves MLX's own.
 - **Loading a LoRA on a Mac could run the machine out of memory.** It took
   the M3 Ultra down with a watchdog panic: free memory at zero, 58 GB in the
   compressor, while Qwen-Image-2.1 was rebuilt with Viggle's LoRA next to
