@@ -14,11 +14,12 @@ RESULT = {"path": "/tmp/out.png", "kind": "image", "model": "z-image-turbo-mlx",
 
 @pytest.fixture
 def ran(monkeypatch):
+    monkeypatch.delenv(jobs.SERVER_ENV, raising=False)
     calls = []
 
-    def run(job, output=None, force=False, **kwargs):
+    def run(job, output=None, force=False, server=None, **kwargs):
         print("a loader talking on stdout")  # must not reach the JSON on stdout
-        calls.append({"job": job, "output": output, "force": force})
+        calls.append({"job": job, "output": output, "force": force, "server": server})
         return RESULT
 
     monkeypatch.setattr(jobs, "run", run)
@@ -122,3 +123,13 @@ def test_run_passes_force_and_says_why_a_load_failed(monkeypatch):
     result = CliRunner().invoke(model_commands.run, ["qwen-image-2.1-mlx", "--force"], terminal_width=200)
     assert result.exit_code == 1 and seen["force"] is True
     assert "needs about 46 GB" in result.output
+
+
+def test_server_from_the_option_or_the_environment(ran):
+    CliRunner().invoke(job_commands.generate, ["a fox", "--server", "192.168.0.21:8010", "--json"])
+    assert ran[-1]["server"] == "192.168.0.21:8010"
+    CliRunner(env={jobs.SERVER_ENV: "http://192.168.0.21:8013"}).invoke(job_commands.edit, [
+        "make it night", "-i", __file__.replace("test_job_commands.py", "__init__.py"), "--json"])
+    assert ran[-1]["server"] == "http://192.168.0.21:8013"
+    CliRunner().invoke(job_commands.video, ["waves", "--json"])
+    assert ran[-1]["server"] is None

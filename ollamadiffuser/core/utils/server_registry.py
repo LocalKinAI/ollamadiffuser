@@ -104,7 +104,8 @@ def ask(host: str, port: int, timeout: float = 2.0) -> Optional[Dict]:
 USUAL_PORTS = range(8000, 8020)
 
 
-def discover(ports: Iterable[int] = USUAL_PORTS, timeout: float = 1.0) -> List[Dict]:
+def discover(ports: Iterable[int] = USUAL_PORTS, timeout: float = 1.0,
+             host: Optional[str] = None) -> List[Dict]:
     """Every OllamaDiffuser server on this machine, and what each holds.
 
     The records first, then the usual ports: a server started by an older
@@ -112,32 +113,36 @@ def discover(ports: Iterable[int] = USUAL_PORTS, timeout: float = 1.0) -> List[D
     no record here but still answers. Each entry has ``port``, ``host``,
     ``url``, ``pid`` (None when found by probing), ``answering``, ``loaded``,
     ``model``, ``type`` and ``device``.
+
+    ``host`` looks at another machine instead: its usual ports only, since
+    the records are this machine's. Only servers started with ``--host
+    0.0.0.0`` answer from there.
     """
     from concurrent.futures import ThreadPoolExecutor
 
-    recorded = {int(r["port"]): r for r in running() if r.get("port") is not None}
+    recorded = {} if host else {int(r["port"]): r for r in running() if r.get("port") is not None}
     candidates = sorted(set(recorded) | {int(p) for p in ports})
 
     def probe(port: int):
-        host = recorded.get(port, {}).get("host") or "127.0.0.1"
-        answer = ask(host, port, timeout=timeout)
+        where = host or recorded.get(port, {}).get("host") or "127.0.0.1"
+        answer = ask(where, port, timeout=timeout)
         # Something else may listen on these ports; ours answers this shape.
-        return port, host, answer if isinstance(answer, dict) and "loaded" in answer else None
+        return port, where, answer if isinstance(answer, dict) and "loaded" in answer else None
 
     with ThreadPoolExecutor(max_workers=max(1, min(16, len(candidates)))) as pool:
         answers = list(pool.map(probe, candidates))
 
     found = []
-    for port, host, answer in answers:
+    for port, where, answer in answers:
         record = recorded.get(port)
         if answer is None and record is None:
             continue
         loaded = bool(answer and answer.get("loaded"))
         info = (answer or {}).get("info") or {}
-        url_host = "127.0.0.1" if host in ("0.0.0.0", "", None) else host
+        url_host = "127.0.0.1" if where in ("0.0.0.0", "", None) else where
         found.append({
             "port": port,
-            "host": host,
+            "host": where,
             "url": f"http://{url_host}:{port}",
             "pid": record.get("pid") if record else None,
             "answering": answer is not None,

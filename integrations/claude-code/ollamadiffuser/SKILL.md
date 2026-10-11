@@ -56,6 +56,21 @@ with the numbers in the error. Then prefer a smaller model, or stop a server you
 (`ollamadiffuser stop --port N`). Pass `--force` only if the user agrees: on a Mac, running out of
 memory can stall the whole machine.
 
+## The GPU on another machine
+
+When the models live on another machine (a GPU box on the LAN), send the jobs there:
+
+```bash
+ollamadiffuser ps --host 192.168.0.21 --json     # what runs on that machine
+ollamadiffuser generate "PROMPT" --server 192.168.0.21:8010 -o out.png --json
+export OLLAMADIFFUSER_SERVER=192.168.0.21:8010   # or once, for every job (and for `ollamadiffuser mcp`)
+```
+
+The pictures to edit go up from this machine, the result is saved on this machine, and nothing
+loads here. A server holding another model is left alone, and the error says which model it
+holds; leave `-m` out to use it. A server must be started on that machine with
+`--host 0.0.0.0`, because the default host takes no calls from other machines.
+
 ## Many jobs with one model
 
 Each job loads the model when no server holds it, which takes seconds to a minute. For a batch,

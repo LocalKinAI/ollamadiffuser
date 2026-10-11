@@ -237,3 +237,84 @@ class TestOverHttp:
         monkeypatch.setattr("requests.post", lambda url, **kwargs: Refused())
         with pytest.raises(JobError, match="not a video model"):
             jobs._over_http("http://h:1", Job("video", "p"), 1)
+
+
+class TestRemoteServer:
+    """`--server` / OLLAMADIFFUSER_SERVER: the job runs on another machine, the file lands here."""
+
+    @pytest.fixture
+    def remote(self, monkeypatch):
+        state = {"answer": {"loaded": True, "model": "boogu-image-turbo-mlx",
+                            "info": {"type": "mlx", "device": "mps"}},
+                 "loads": [], "load_status": 200, "load_detail": None}
+
+        class Answer:
+            def __init__(self, status, body):
+                self.status_code, self._body = status, body
+
+            def json(self):
+                return self._body
+
+        def get(url, timeout=None):
+            if state["answer"] is None:
+                import requests
+                raise requests.ConnectionError("connection refused")
+            return Answer(200, state["answer"])
+
+        def post(url, json=None, timeout=None):
+            state["loads"].append((url, json))
+            return Answer(state["load_status"], {"detail": state["load_detail"]})
+
+        monkeypatch.setattr("requests.get", get)
+        monkeypatch.setattr("requests.post", post)
+        monkeypatch.setattr(jobs, "servers", lambda host=None: pytest.fail("no local discovery"))
+        return state
+
+    def test_addresses(self):
+        assert jobs.server_url("192.168.0.21:8010") == "http://192.168.0.21:8010"
+        assert jobs.server_url("box.local") == "http://box.local:8000"
+        assert jobs.server_url("http://192.168.0.21:8010/") == "http://192.168.0.21:8010"
+        with pytest.raises(JobError, match="Not a server address"):
+            jobs.server_url("")
+
+    def test_the_server_holding_the_model_does_it_and_the_file_lands_here(self, manager, remote, posted, tmp_path):
+        result = jobs.run(Job("image", "a fox"), output_dir=str(tmp_path), manager=manager,
+                          server="192.168.0.21:8010")
+        assert posted[0][0] == "http://192.168.0.21:8010"
+        assert result["server"] == "http://192.168.0.21:8010" and result["model"] == "boogu-image-turbo-mlx"
+        assert Path(result["path"]).parent == tmp_path
+        manager.load_model.assert_not_called()
+
+    def test_another_model_there_is_left_alone(self, manager, remote, tmp_path):
+        with pytest.raises(JobError, match="runs boogu-image-turbo-mlx, not qwen-image-2.1-mlx"):
+            jobs.run(Job("image", "p", model="qwen-image-2.1-mlx"), output_dir=str(tmp_path),
+                     manager=manager, server="192.168.0.21:8010")
+        assert remote["loads"] == []
+
+    def test_an_idle_server_loads_the_model_named(self, manager, remote, posted, tmp_path):
+        remote["answer"] = {"loaded": False}
+        result = jobs.run(Job("image", "p", model="z-image-turbo-mlx"), output_dir=str(tmp_path),
+                          manager=manager, server="192.168.0.21:8010")
+        assert remote["loads"] == [("http://192.168.0.21:8010/api/models/load", {"model_name": "z-image-turbo-mlx"})]
+        assert result["model"] == "z-image-turbo-mlx" and posted
+
+    def test_an_idle_server_refusing_the_load_says_why(self, manager, remote, tmp_path):
+        remote.update(answer={"loaded": False}, load_status=400, load_detail="needs about 46 GB")
+        with pytest.raises(JobError, match="could not load qwen-image-2.1-mlx: needs about 46 GB"):
+            jobs.run(Job("image", "p", model="qwen-image-2.1-mlx"), output_dir=str(tmp_path),
+                     manager=manager, server="192.168.0.21:8010")
+
+    def test_an_idle_server_needs_a_model_name(self, manager, remote, tmp_path):
+        remote["answer"] = {"loaded": False}
+        with pytest.raises(JobError, match="no model loaded"):
+            jobs.run(Job("image", "p"), output_dir=str(tmp_path), manager=manager, server="h:1")
+
+    def test_nobody_answering_says_how_to_start_one(self, manager, remote, tmp_path):
+        remote["answer"] = None
+        with pytest.raises(JobError, match="--host 0.0.0.0"):
+            jobs.run(Job("image", "p"), output_dir=str(tmp_path), manager=manager, server="192.168.0.21:8019")
+
+    def test_a_lora_is_not_forced_on_it(self, manager, remote, tmp_path):
+        with pytest.raises(JobError, match="/api/lora/load"):
+            jobs.run(Job("image", "p", lora="Viggle/turbo"), output_dir=str(tmp_path),
+                     manager=manager, server="192.168.0.21:8010")

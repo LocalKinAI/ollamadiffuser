@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import List, Optional
@@ -57,15 +58,19 @@ def create_mcp_server():
             "Local image and video generation on this machine: text-to-image, editing a "
             "picture by instruction, and short videos, with FLUX, Qwen-Image, Z-Image, LTX-2 "
             "and more. Files are paths on this machine. A job goes to an OllamaDiffuser server "
-            "already running the model when there is one, and otherwise loads the model here. "
+            "already running the model when there is one, and otherwise loads the model here — "
+            "or, when OLLAMADIFFUSER_SERVER names one on another machine, to that server only. "
             "list_servers shows what is running, list_models what is installed."
         ),
     )
 
     async def _run(job: jobs.Job) -> dict:
+        # OLLAMADIFFUSER_SERVER, set in the client's config, sends every job to
+        # that server — another machine's GPU — and the files come back here.
         try:
             return await asyncio.to_thread(
-                jobs.run, job, output_dir=str(_outputs()), keep_loaded=True, manager=model_manager
+                jobs.run, job, output_dir=str(_outputs()), keep_loaded=True, manager=model_manager,
+                server=os.environ.get(jobs.SERVER_ENV) or None,
             )
         except jobs.JobError as e:
             raise ToolError(str(e))
@@ -201,11 +206,21 @@ def create_mcp_server():
     async def list_servers() -> str:
         """List the OllamaDiffuser servers running on this machine and the model each
         holds. A job for one of those models goes to its server instead of loading the
-        model a second time."""
-        found = await asyncio.to_thread(jobs.servers)
-        if not found:
-            return "No OllamaDiffuser server is running."
+        model a second time. With OLLAMADIFFUSER_SERVER set, the servers on that machine."""
         lines = []
+        remote = os.environ.get(jobs.SERVER_ENV)
+        if remote:
+            from urllib.parse import urlsplit
+            try:
+                url = jobs.server_url(remote)
+            except jobs.JobError as e:
+                raise ToolError(str(e))
+            lines.append(f"Jobs go to {url} ({jobs.SERVER_ENV} is set).")
+            found = await asyncio.to_thread(jobs.servers, urlsplit(url).hostname)
+        else:
+            found = await asyncio.to_thread(jobs.servers)
+        if not found:
+            return "\n".join(lines + ["No OllamaDiffuser server is running."])
         for server in found:
             if server["loaded"]:
                 what = f"{server['model']} ({server['type']}, {server['device']})"

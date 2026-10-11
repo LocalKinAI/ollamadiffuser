@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### 🖧 Jobs on another machine's GPU
+
+- **`--server` on `generate`, `edit` and `video`** sends the job to the
+  OllamaDiffuser server on another machine, e.g. `--server
+  192.168.0.21:8010`. `OLLAMADIFFUSER_SERVER` sets it once, and `ollamadiffuser
+  mcp` reads it too. The pictures to edit go up from this machine, the result
+  is saved on this machine, and nothing loads here. A server holding another
+  model is left alone, since others may be using it, and the error says what
+  it holds. A server started with no model (`serve`) loads the model the job
+  names. The server must be started with `--host 0.0.0.0`, because the default
+  `localhost` takes no calls from other machines; when nothing answers, the
+  error says so.
+- **`ps --host 192.168.0.21`** lists the servers on that machine, and MCP's
+  `list_servers` says where jobs go when `OLLAMADIFFUSER_SERVER` is set.
+- **Measured from a Mac against the M3 Ultra box over the LAN:** Boogu images
+  took 40.4 s and 45.5 s and were saved on the Mac. A FLUX.2 klein edit of a
+  picture on the Mac took 22.1 s, and 53.3 s with two of them. Asking for a
+  model the server doesn't hold, or a port with no server, failed with a
+  sentence.
+
 ## [2.3.0] - 2026-10-10
 
 A minor version because it adds commands, MCP tools and a memory check. Two

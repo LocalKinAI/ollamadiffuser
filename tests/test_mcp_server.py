@@ -77,8 +77,10 @@ def running_servers():
 
 @pytest.fixture
 def server(mock_model_manager, running_servers, monkeypatch, tmp_path):
+    from ollamadiffuser.core import jobs
     from ollamadiffuser.core.config.settings import settings
     monkeypatch.setattr(settings, "config_dir", tmp_path)
+    monkeypatch.delenv(jobs.SERVER_ENV, raising=False)
     with patch("ollamadiffuser.mcp.server.model_manager", mock_model_manager), \
          patch("ollamadiffuser.core.jobs.servers", return_value=running_servers):
         from ollamadiffuser.mcp.server import create_mcp_server
@@ -269,3 +271,32 @@ class TestListServersTool:
     def test_nothing_running(self, server):
         text = _content(_run(server.call_tool("list_servers", {})))[0].text
         assert "No OllamaDiffuser server is running" in text
+
+
+@MCP_SKIP
+class TestServerOnAnotherMachine:
+    """OLLAMADIFFUSER_SERVER in the client's config: every job goes to that server."""
+
+    def test_jobs_go_there(self, server, mock_model_manager, monkeypatch):
+        from ollamadiffuser.core import jobs
+
+        class Running:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {"loaded": True, "model": "boogu-image-turbo-mlx", "info": {}}
+
+        monkeypatch.setenv(jobs.SERVER_ENV, "192.168.0.21:8010")
+        monkeypatch.setattr("requests.get", lambda url, timeout=None: Running())
+        with patch("ollamadiffuser.core.jobs._over_http", side_effect=lambda url, job, seed: _png()):
+            blocks = _content(_run(server.call_tool("generate_image", {"prompt": "a fox"})))
+        assert "via http://192.168.0.21:8010" in blocks[0].text and blocks[1].type == "image"
+        mock_model_manager.load_model.assert_not_called()
+
+    def test_list_servers_says_where_jobs_go(self, server, running_servers, monkeypatch):
+        from ollamadiffuser.core import jobs
+        monkeypatch.setenv(jobs.SERVER_ENV, "192.168.0.21:8010")
+        running_servers.append(_a_server("boogu-image-turbo-mlx", 8010))
+        text = _content(_run(server.call_tool("list_servers", {})))[0].text
+        assert "Jobs go to http://192.168.0.21:8010" in text and "port 8010: boogu-image-turbo-mlx" in text

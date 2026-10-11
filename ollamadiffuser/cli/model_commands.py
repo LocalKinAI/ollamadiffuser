@@ -585,27 +585,35 @@ def rm(model_name: str):
         sys.exit(1)
 
 
-def _discover_servers():
+def _discover_servers(host: Optional[str] = None):
     """Running servers: the recorded ones, and any answering on the usual
     ports or the configured one — started by an older version, or with
-    another config directory, they leave no record but still answer."""
+    another config directory, they leave no record but still answer.
+    ``host``: another machine's, on its usual ports."""
     from ..core.utils import server_registry
     ports = set(server_registry.USUAL_PORTS) | {settings.server.port}
-    return server_registry.discover(sorted(ports))
+    return server_registry.discover(sorted(ports), host=host)
 
 
 @click.command()
 @click.option('--json', 'as_json', is_flag=True, help='Print the servers as JSON')
-def ps(as_json: bool):
+@click.option('--host', default=None,
+              help='Look on another machine (e.g. 192.168.0.21); its servers answer only if '
+                   'started with --host 0.0.0.0')
+def ps(as_json: bool, host: Optional[str]):
     """Show the running model servers"""
-    servers = _discover_servers()
+    servers = _discover_servers(host)
     if as_json:
         click.echo(json.dumps(servers, indent=2))
         return
 
     if not servers:
-        rprint("[yellow]No model server is running[/yellow]")
-        rprint("[dim]Use 'ollamadiffuser run <model>' to start one[/dim]")
+        where = f" on {host}" if host else ""
+        rprint(f"[yellow]No model server is running{where}[/yellow]")
+        if host:
+            rprint(f"[dim]On {host}: 'ollamadiffuser run <model> --host 0.0.0.0 --port 8010'[/dim]")
+        else:
+            rprint("[dim]Use 'ollamadiffuser run <model>' to start one[/dim]")
         return
 
     table = Table(title=f"{len(servers)} running server{'s' if len(servers) != 1 else ''}")

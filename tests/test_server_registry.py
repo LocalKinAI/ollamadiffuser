@@ -119,3 +119,28 @@ def test_stop_port_and_all(home, monkeypatch):
     posted.clear()
     CliRunner().invoke(model_commands.stop, ["--all"])
     assert sorted(posted) == ["http://127.0.0.1:8010/api/shutdown", "http://127.0.0.1:8012/api/shutdown"]
+
+
+def test_discover_on_another_machine_asks_its_ports_not_our_records(home, monkeypatch):
+    server_registry.register("127.0.0.1", 8000, "z-image-turbo-mlx")   # this machine's
+    asked = []
+
+    def ask(host, port, timeout=2.0):
+        asked.append(host)
+        return _answer("boogu-image-turbo-mlx") if (host, port) == ("192.168.0.21", 8010) else None
+
+    monkeypatch.setattr(server_registry, "ask", ask)
+    (only,) = server_registry.discover(host="192.168.0.21")
+    assert only["url"] == "http://192.168.0.21:8010" and only["model"] == "boogu-image-turbo-mlx"
+    assert only["pid"] is None and set(asked) == {"192.168.0.21"}
+
+
+def test_ps_host(home, monkeypatch):
+    from ollamadiffuser.cli import model_commands
+    monkeypatch.setattr(server_registry, "ask", lambda host, port, timeout=2.0:
+                        _answer("boogu-image-turbo-mlx") if (host, port) == ("192.168.0.21", 8010) else None)
+    result = CliRunner().invoke(model_commands.ps, ["--host", "192.168.0.21", "--json"])
+    assert result.exit_code == 0, result.output
+    assert [s["url"] for s in json.loads(result.output)] == ["http://192.168.0.21:8010"]
+    result = CliRunner().invoke(model_commands.ps, ["--host", "192.168.0.99"])
+    assert "No model server is running on 192.168.0.99" in result.output

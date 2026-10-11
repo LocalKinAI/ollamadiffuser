@@ -57,17 +57,39 @@ class Job:
     lora_scale: float = 1.0
 
 
-def servers() -> List[Dict]:
-    """The OllamaDiffuser servers running on this machine."""
+# A server on another machine — the GPU box down the hall — that jobs go to
+# instead of anything on this one: `--server`, or this, set once.
+SERVER_ENV = "OLLAMADIFFUSER_SERVER"
+
+
+def servers(host: Optional[str] = None) -> List[Dict]:
+    """The OllamaDiffuser servers running on this machine, or on ``host``."""
     from .utils import server_registry
-    return server_registry.discover()
+    return server_registry.discover(host=host)
+
+
+def server_url(value: str) -> str:
+    """``192.168.0.21:8010`` → ``http://192.168.0.21:8010``; no port means 8000."""
+    from urllib.parse import urlsplit
+    value = value.strip().rstrip("/")
+    if "://" not in value:
+        value = f"http://{value}"
+    parts = urlsplit(value)
+    if not parts.hostname:
+        raise JobError(f"Not a server address: {value}")
+    if parts.port is None:
+        value = f"{parts.scheme}://{parts.netloc}:8000{parts.path}"
+    return value
 
 
 def run(job: Job, *, output: Optional[str] = None, output_dir: Optional[str] = None,
-        keep_loaded: bool = False, force: bool = False, manager=None) -> Dict:
+        keep_loaded: bool = False, force: bool = False, manager=None,
+        server: Optional[str] = None) -> Dict:
     """Run ``job``; return the file it made, the model, the seed, the time it
     took, and the server that did it (None when it ran in this process).
 
+    ``server`` sends the job to that server and nowhere else — another
+    machine's, typically; the files go up and the result comes back here.
     ``keep_loaded`` keeps a model this process loaded for the next job (the
     MCP server); otherwise it is let go when the job is done. ``force``
     loads a model even when free memory looks too low.
@@ -79,17 +101,19 @@ def run(job: Job, *, output: Optional[str] = None, output_dir: Optional[str] = N
     target = _target(job.kind, seed, output, output_dir)
     started = time.time()
 
-    here = manager.current_model_name if manager.is_model_loaded() else None
-    server = None
-    if job.model is None and here is None:
-        server = _the_running_server()
-    elif job.model is not None and job.model != here:
-        server = next((s for s in servers() if s["loaded"] and s["model"] == job.model), None)
+    if server:
+        server = _remote(server_url(server), job.model)
+    else:
+        here = manager.current_model_name if manager.is_model_loaded() else None
+        if job.model is None and here is None:
+            server = _the_running_server()
+        elif job.model is not None and job.model != here:
+            server = next((s for s in servers() if s["loaded"] and s["model"] == job.model), None)
 
     if server:
         if job.lora and job.kind != "video":
             raise JobError(
-                f"{server['model']} is running on port {server['port']} for everyone who calls it, "
+                f"{server['model']} is running at {server['url']} for everyone who calls it, "
                 f"and a LoRA there would change it for all of them. Load the LoRA on that server "
                 f"yourself (POST {server['url']}/api/lora/load) and call again without one, or stop "
                 f"that server first."
@@ -109,6 +133,46 @@ def run(job: Job, *, output: Optional[str] = None, output_dir: Optional[str] = N
         "elapsed_s": round(time.time() - started, 1),
         "server": server["url"] if server else None,
     }
+
+
+def _remote(url: str, model: Optional[str]) -> Dict:
+    """The server at ``url``, holding ``model``.
+
+    One with no model loaded (`ollamadiffuser serve`) is waiting for one and
+    loads the model the job names. One holding another model is left alone:
+    others may be using it, and swapping it would cost them a reload.
+    """
+    import requests
+
+    try:
+        answer = requests.get(f"{url}/api/models/running", timeout=10).json()
+        if not isinstance(answer, dict) or "loaded" not in answer:
+            raise ValueError("not an OllamaDiffuser server")
+    except Exception as e:
+        raise JobError(
+            f"No OllamaDiffuser server answers at {url} ({e}). Start one on that machine with "
+            f"`ollamadiffuser run MODEL --host 0.0.0.0 --port PORT`; the default host, localhost, "
+            f"takes no calls from other machines."
+        ) from e
+    held = answer.get("model") if answer.get("loaded") else None
+    if model and held and held != model:
+        raise JobError(f"The server at {url} runs {held}, not {model}. Leave the model out to use "
+                       f"{held}, or point at a server that runs {model}.")
+    if not held:
+        if not model:
+            raise JobError(f"The server at {url} has no model loaded; name the one to load there.")
+        try:
+            response = requests.post(f"{url}/api/models/load", json={"model_name": model}, timeout=HTTP_TIMEOUT)
+        except requests.RequestException as e:
+            raise JobError(f"The server at {url} did not answer: {e}") from e
+        if response.status_code != 200:
+            try:
+                detail = response.json().get("detail")
+            except Exception:
+                detail = response.text[:300]
+            raise JobError(f"The server at {url} could not load {model}: {detail or response.status_code}")
+        held = model
+    return {"url": url, "model": held, "loaded": True}
 
 
 def _the_running_server() -> Dict:

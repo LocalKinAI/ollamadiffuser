@@ -31,6 +31,9 @@ def _job_options(f):
         click.option("--guidance", "-g", type=float, help="Guidance scale. Default: the model's."),
         click.option("--json", "as_json", is_flag=True, help="Print the result as JSON (for scripts and agents)."),
         click.option("--force", is_flag=True, help="Load the model even if free memory looks too low."),
+        click.option("--server", "-S", envvar=jobs.SERVER_ENV, show_envvar=True,
+                     help="Send the job to this server, e.g. 192.168.0.21:8010 on another machine; "
+                          "the result is saved here. Nothing loads on this machine."),
     ]):
         f = option(f)
     return f
@@ -46,7 +49,7 @@ def _lora_options(f):
     return f
 
 
-def _run(job: jobs.Job, output, as_json: bool, force: bool) -> None:
+def _run(job: jobs.Job, output, as_json: bool, force: bool, server=None) -> None:
     root = logging.getLogger()
     if root.level > logging.DEBUG:  # -v keeps the logs
         root.setLevel(logging.WARNING)
@@ -54,9 +57,11 @@ def _run(job: jobs.Job, output, as_json: bool, force: bool) -> None:
         # stdout is for the result: whatever a loader prints goes to stderr.
         with contextlib.redirect_stdout(sys.stderr):
             if not as_json:
-                where = job.model or "the running server's model"
-                err_console.print(f"[dim]Making {'a video' if job.kind == 'video' else 'an image'} with {where}…[/dim]")
-            result = jobs.run(job, output=output, force=force)
+                what = job.model or "the running server's model"
+                where = f" on {server}" if server else ""
+                err_console.print(f"[dim]Making {'a video' if job.kind == 'video' else 'an image'} "
+                                  f"with {what}{where}…[/dim]")
+            result = jobs.run(job, output=output, force=force, server=server)
     except Exception as e:
         message = str(e) if isinstance(e, jobs.JobError) else f"{type(e).__name__}: {e}"
         if as_json:
@@ -81,7 +86,7 @@ def _run(job: jobs.Job, output, as_json: bool, force: bool) -> None:
 @click.option("--negative", "-n", help="What to keep out of the picture.")
 @click.option("--scheduler", help="A sampling schedule the model takes (e.g. viggle_turbo).")
 @_lora_options
-def generate(prompt, model, output, seed, steps, guidance, as_json, force,
+def generate(prompt, model, output, seed, steps, guidance, as_json, force, server,
              width, height, negative, scheduler, lora, lora_weight, lora_scale):
     """Make an image from a prompt, and print where it went.
 
@@ -89,11 +94,12 @@ def generate(prompt, model, output, seed, steps, guidance, as_json, force,
     Examples:
       ollamadiffuser generate "a red fox in snow" -m z-image-turbo-mlx
       ollamadiffuser generate "a poster that reads 海边小屋" -m qwen-image-2.1-turbo-mlx -o poster.png --json
+      ollamadiffuser generate "a red fox in snow" --server 192.168.0.21:8010   # on another machine
     """
     _run(jobs.Job(kind="image", prompt=prompt, model=model, negative_prompt=negative,
                   width=width, height=height, steps=steps, guidance=guidance, seed=seed,
                   scheduler=scheduler, lora=lora, lora_weight=lora_weight, lora_scale=lora_scale),
-         output, as_json, force)
+         output, as_json, force, server)
 
 
 @click.command()
@@ -109,7 +115,7 @@ def generate(prompt, model, output, seed, steps, guidance, as_json, force,
 @click.option("--negative", "-n", help="What to keep out of the picture.")
 @click.option("--scheduler", help="A sampling schedule the model takes.")
 @_lora_options
-def edit(prompt, images, model, output, seed, steps, guidance, as_json, force,
+def edit(prompt, images, model, output, seed, steps, guidance, as_json, force, server,
          mask, strength, negative, scheduler, lora, lora_weight, lora_scale):
     """Edit a picture by instruction, and print where the result went.
 
@@ -122,7 +128,7 @@ def edit(prompt, images, model, output, seed, steps, guidance, as_json, force,
                   mask=mask, strength=strength, negative_prompt=negative, steps=steps,
                   guidance=guidance, seed=seed, scheduler=scheduler, lora=lora,
                   lora_weight=lora_weight, lora_scale=lora_scale),
-         output, as_json, force)
+         output, as_json, force, server)
 
 
 @click.command()
@@ -138,7 +144,7 @@ def edit(prompt, images, model, output, seed, steps, guidance, as_json, force,
               help="A reference video to follow (pose, depth, edges).")
 @click.option("--lora", help="The control LoRA for --control (a file or a Hugging Face repo).")
 @click.option("--lora-scale", type=float, help="How strongly to apply it.")
-def video(prompt, model, output, seed, steps, guidance, as_json, force,
+def video(prompt, model, output, seed, steps, guidance, as_json, force, server,
           seconds, frames, width, height, image, audio, control, lora, lora_scale):
     """Make a video, and print where it went.
 
@@ -151,4 +157,4 @@ def video(prompt, model, output, seed, steps, guidance, as_json, force,
                   width=width, height=height, image=image, audio=audio, control=control,
                   steps=steps, guidance=guidance, seed=seed, lora=lora,
                   lora_scale=lora_scale if lora_scale is not None else 1.0),
-         output, as_json, force)
+         output, as_json, force, server)
