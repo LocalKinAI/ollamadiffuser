@@ -6,6 +6,8 @@ description: Make images, edit pictures and make short videos on this machine wi
 # OllamaDiffuser: local images, edits and video
 
 Everything runs on this machine. A job makes a file; the command prints where it went.
+These commands need OllamaDiffuser 2.3.0 or later (`ollamadiffuser --version`; upgrade with
+`pip install -U ollamadiffuser`).
 
 ## One command per job
 

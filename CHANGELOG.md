@@ -5,7 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.3.0] - 2026-10-10
+
+A minor version because it adds commands, MCP tools and a memory check. Two
+behaviours change, both for the better, and a client may notice them.
+
+### Upgrading from 2.2.0
+
+- `pip install -U ollamadiffuser`, or re-run the `curl | sh` installer. No
+  dependency changes.
+- **A failed generation is an error now, not a picture.** The API used to
+  answer 200 with a 512px card that had the error written on it. It now
+  answers 500 with the error, or 400 when an input was missing. A client
+  that saved whatever came back will see the failure instead. The ComfyUI
+  nodes already raise on a non-200.
+- **On Apple Silicon, a model is not loaded when free memory is below its
+  stated minimum.** `--force` on `run` / `load` / the jobs, or
+  `OLLAMADIFFUSER_SKIP_MEMORY_CHECK=1` for servers and scripts, loads it
+  as before.
 
 ### 🤖 Agents use it in one command
 

@@ -23,7 +23,7 @@ You can generate images using locally-installed AI diffusion models through the 
 
 ## The Quickest Way: One Command
 
-`ollamadiffuser generate`, `edit` and `video` make a picture, an edit or a video in one command, with no server to start or stop (if `ollamadiffuser generate --help` fails, the install predates them: use the REST API below, or upgrade):
+Since OllamaDiffuser 2.3.0, `ollamadiffuser generate`, `edit` and `video` make a picture, an edit or a video in one command, with no server to start or stop (on an older install, upgrade with `pip install -U ollamadiffuser`, or use the REST API below):
 
 ```bash
 ollamadiffuser generate "a serene mountain lake at sunset" -m z-image-turbo-mlx -o lake.png --json

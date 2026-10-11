@@ -2,11 +2,13 @@
 
 **Thank you for the incredible support and over 30,000 downloads!**
 
-`ollamadiffuser` is in **active development**. **v2.2.0**: **106 models** — 44 native on Apple Silicon through MLX (38 image models, 6 LTX-2 video packs) and 62 through diffusers — with **Qwen-Image-2.1 editing and its official 8-step Turbo on a Mac**, **video on Mac and NVIDIA**, **LoRAs on both backends**, and a compile-free install with a one-line `curl | sh` installer. See [What's New](#-whats-new) below. Part of the **[LocalKinAI](https://github.com/LocalKinAI)** ecosystem.
+`ollamadiffuser` is in **active development**. **v2.3.0**: **106 models** — 44 native on Apple Silicon through MLX (38 image models, 6 LTX-2 video packs) and 62 through diffusers — with **one-command image, edit and video jobs for scripts and agents**, **Qwen-Image-2.1 editing and its official 8-step Turbo on a Mac**, **video on Mac and NVIDIA**, **LoRAs on both backends**, and a compile-free install with a one-line `curl | sh` installer. See [What's New](#-whats-new) below. Part of the **[LocalKinAI](https://github.com/LocalKinAI)** ecosystem.
 
 ## 🆕 What's New
 
-### Unreleased — one command for agents
+### v2.3.0 — one command for agents
+
+Upgrade with `pip install -U ollamadiffuser`; full notes in [CHANGELOG.md](CHANGELOG.md). A failed generation is now an error from the API rather than a 200 with a picture of the error, and on a Mac a model that won't fit in free memory isn't loaded unless forced.
 
 - **`ollamadiffuser generate / edit / video`** make a picture, an edit or a clip in one command, and print the file (`--json` for scripts and agents). The job goes to a server that already holds the model, or loads it for the job. See [Using OllamaDiffuser from agents](#using-ollamadiffuser-from-agents).
 - **`ps --json`, `list --json`, `stop --port N` / `--all`**; MCP gains `edit_image`, `generate_video` and `list_servers`; a Claude Code skill in `integrations/claude-code/`.
