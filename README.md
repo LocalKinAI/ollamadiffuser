@@ -2,11 +2,13 @@
 
 **Thank you for the incredible support and over 30,000 downloads!**
 
-`ollamadiffuser` is in **active development**. **v2.1.0** is the first PyPI release since 2.0.17: **99 models** — 39 native on Apple Silicon through MLX (33 image models, 6 LTX-2 video packs) and 60 through diffusers — **video on Mac and NVIDIA**, **LoRAs on both backends**, and a compile-free install with a one-line `curl | sh` installer. See [What's New](#-whats-new) below. Part of the **[LocalKinAI](https://github.com/LocalKinAI)** ecosystem.
+`ollamadiffuser` is in **active development**. **v2.2.0**: **106 models** — 44 native on Apple Silicon through MLX (38 image models, 6 LTX-2 video packs) and 62 through diffusers — with **Qwen-Image-2.1 editing and its official 8-step Turbo on a Mac**, **video on Mac and NVIDIA**, **LoRAs on both backends**, and a compile-free install with a one-line `curl | sh` installer. See [What's New](#-whats-new) below. Part of the **[LocalKinAI](https://github.com/LocalKinAI)** ecosystem.
 
 ## 🆕 What's New
 
-### Unreleased — Qwen-Image-2.1 edits on a Mac, and a 6-step turbo
+### v2.2.0 — Qwen-Image-2.1 edits and its Turbo on a Mac
+
+The first PyPI release since 2.1.0. Upgrade with `pip install -U ollamadiffuser`, then `ollamadiffuser enable mlx` on a Mac (mflux 0.22); full notes in [CHANGELOG.md](CHANGELOG.md).
 
 - **Edit with Qwen-Image-2.1 on Apple Silicon.** `qwen-image-2.1-edit-mlx` takes up to ten reference pictures, a mask, an edit strength and prompt rewriting, from the same weights as `qwen-image-2.1-mlx`. Its ControlNet (`qwen-image-2.1-controlnet-mlx`: canny, depth, pose and five more, plus inpainting) and Qwen-Image-Edit-2511 (`qwen-image-edit-2511-mlx`) run natively too. Needs mflux 0.22, now the minimum.
 - **Qwen-Image-2.1 in 6 steps.** Load Viggle's turbo LoRA and pass `scheduler=viggle_turbo` — see [LoRAs on Apple Silicon](#loras-on-apple-silicon-mlx-models).

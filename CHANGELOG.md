@@ -5,7 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.2.0] - 2026-10-10
+
+The first PyPI release since 2.1.0; 2.1.1 below, the ComfyUI nodes, was only
+on GitHub. A minor version because it adds models and raises the mflux floor
+to 0.22, which changes some images: FLUX.1, FIBO and Qwen-Image load the
+bias of their last norm layer again.
+
+### Upgrading from 2.1.0
+
+- `pip install -U ollamadiffuser`, or re-run the `curl | sh` installer. On
+  Apple Silicon, `ollamadiffuser enable mlx` then moves mflux to 0.22.0,
+  which the new Qwen-Image-2.1 entries need.
+- `ollamadiffuser enable mcp` installs mcp 2.x, and the MCP server now starts
+  with it; 2.1.0's didn't.
+- `qwen-image-2.1` and `qwen-image-2.1-turbo` on NVIDIA need diffusers 0.41
+  (`pip install -U diffusers`).
+- **106 models**, up from 99: 44 native on Apple Silicon (38 image models
+  through mflux, 6 LTX-2 video packs) and 62 through diffusers.
 
 ### 🖼️ Qwen-Image-2.1 edits, ControlNet and a 6-step turbo on Apple Silicon — mflux 0.22
 
