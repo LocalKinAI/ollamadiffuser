@@ -5,6 +5,65 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### 🤖 Agents use it in one command
+
+- **`ollamadiffuser generate`, `edit` and `video`**: one job, one file, an
+  exit code. Each prints the file it wrote. With `--json`, stdout is one JSON
+  object (`path`, `kind`, `model`, `seed`, `elapsed_s`, `server`), or
+  `{"error": …}` with exit code 1, and anything a loader prints goes to
+  stderr. A seed is picked when none is given, and reported. `edit` takes the
+  picture plus more references (`-i` repeated), a `--mask` and a
+  `--strength`; `video` takes a first frame, an audio track or a control
+  video. (`core/jobs.py`)
+- **No second copy.** A job goes to a running server that already holds the
+  model — started with `ollamadiffuser run`, by the ComfyUI nodes or by
+  another agent — and otherwise loads the model for the job and lets it go.
+  With no model named, the one server running is used; with several, the job
+  asks which.
+- **`ps` sees every server.** Besides its records it probes ports 8000–8019
+  and the configured one, so servers started by older versions or from
+  another config directory (an agent's sandbox) show up too. `ps --json` and
+  `list --json` for scripts; `stop --port N` and `stop --all`.
+- **MCP**: `edit_image`, `generate_video` and `list_servers` join
+  `generate_image`, which now takes a `scheduler` and a `lora`. A LoRA stays
+  on the model the MCP process holds until a call asks for another, since on
+  MLX every change rebuilds the model. Tested on mcp 1.30 and 2.3.
+- **A memory check on Apple Silicon.** A model is not loaded when less than
+  its stated minimum (`min_vram_gb`) is free: the GPU shares the machine's
+  memory, and running out stalls the whole machine (the M3 Ultra once
+  panicked). The error gives the numbers. `--force` on `run`, `load` and the
+  jobs, or `OLLAMADIFFUSER_SKIP_MEMORY_CHECK=1`, loads it anyway.
+  `load_model` keeps the reason in `last_error`, so `run`, `/api/models/load`
+  and MCP say why a load failed.
+- **A skill for Claude Code** and other skill-aware agents, at
+  `integrations/claude-code/ollamadiffuser/SKILL.md`. The OpenClaw skill gains
+  the one-command way.
+- `/api/generate/img2img` takes a `mask`. It and `/api/generate` answer a
+  missing input with a 400 and the model's own sentence.
+- **Measured on the box** (M3 Ultra, beside the user's other services):
+  `qwen-image-2.1-turbo-mlx` was refused at 41.6 GB free (it needs 46).
+  A one-off Boogu image, model load included, took 54.0 s. Through a running
+  FLUX.2 klein 4B server, an edit took 28.9 s, and 38.1 s with two
+  references. A one-off 2-second LTX-2.3 q4 clip took 92.9 s. `ps --json`
+  listed the server, and `stop --port` took it down.
+
+### 🔧 Fixed
+
+- **A failed generation came back as a picture.** On failure, strategies
+  return a 512px card with the error written on it, and the API sent that
+  card with a 200, so an API client, a ComfyUI node or a one-off job saw a
+  success. On the box, a FLUX.2 klein edit with no picture failed inside
+  mflux; `/api/generate` answered 200, and two edits then worked on the
+  card. The card now carries its error and the engine raises it: the API
+  answers with it, the web UI shows it, and a job fails with it.
+- **FLUX.2 klein's editor with no picture** said `concatenate(): incompatible
+  function arguments` (mflux 0.19.2 and 0.22 alike). It now says it needs a
+  picture, and which entries draw without one.
+- **`-v` did nothing.** Logging was configured when the API module was
+  imported, before the flag was read.
+
 ## [2.2.0] - 2026-10-10
 
 The first PyPI release since 2.1.0; 2.1.1 below, the ComfyUI nodes, was only

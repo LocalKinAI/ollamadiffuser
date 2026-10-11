@@ -1,13 +1,12 @@
 """OllamaDiffuser MCP Server - Model Context Protocol integration."""
 
 import asyncio
-import io
 import logging
 import sys
-import time
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
+from ..core import jobs
 from ..core.models.manager import model_manager
 
 logger = logging.getLogger(__name__)
@@ -43,34 +42,9 @@ def _mcp_api():
         return FastMCP, Image, ToolError
 
 
-def _serving(model: Optional[str]) -> Optional[str]:
-    """Base URL of a running server that already holds ``model`` (any model
-    when None) — generating there spares a second copy in this process."""
-    from ..core.utils import server_registry
-    for record in server_registry.running():
-        answer = server_registry.ask(record.get("host"), record.get("port"), timeout=1.0)
-        if answer and answer.get("loaded") and (model is None or answer.get("model") == model):
-            host = record.get("host")
-            host = "127.0.0.1" if host in ("0.0.0.0", "", None) else host
-            return f"http://{host}:{record.get('port')}"
-    return None
-
-
-def _generate_over_http(base: str, body: dict) -> bytes:
-    import requests
-    response = requests.post(f"{base}/api/generate", json={k: v for k, v in body.items() if v is not None},
-                             timeout=3600)
-    response.raise_for_status()
-    return response.content
-
-
-def _save(png: bytes, seed: Optional[int]) -> Path:
+def _outputs() -> Path:
     from ..core.config.settings import settings
-    folder = Path(settings.config_dir) / "outputs"
-    folder.mkdir(parents=True, exist_ok=True)
-    path = folder / f"mcp-{time.strftime('%Y%m%d-%H%M%S')}-{seed if seed is not None else 'r'}.png"
-    path.write_bytes(png)
-    return path
+    return Path(settings.config_dir) / "outputs"
 
 
 def create_mcp_server():
@@ -80,20 +54,41 @@ def create_mcp_server():
     mcp_server = Server(
         "OllamaDiffuser",
         instructions=(
-            "Local AI image generation via Stable Diffusion, FLUX, and 30+ models"
+            "Local image and video generation on this machine: text-to-image, editing a "
+            "picture by instruction, and short videos, with FLUX, Qwen-Image, Z-Image, LTX-2 "
+            "and more. Files are paths on this machine. A job goes to an OllamaDiffuser server "
+            "already running the model when there is one, and otherwise loads the model here. "
+            "list_servers shows what is running, list_models what is installed."
         ),
     )
+
+    async def _run(job: jobs.Job) -> dict:
+        try:
+            return await asyncio.to_thread(
+                jobs.run, job, output_dir=str(_outputs()), keep_loaded=True, manager=model_manager
+            )
+        except jobs.JobError as e:
+            raise ToolError(str(e))
+
+    def _said(result: dict) -> str:
+        via = f" via {result['server']}" if result["server"] else ""
+        return (f"Saved to {result['path']} ({result['model']}, seed {result['seed']}, "
+                f"{result['elapsed_s']} s{via})")
 
     @mcp_server.tool()
     async def generate_image(
         prompt: str,
         model: Optional[str] = None,
-        negative_prompt: str = "low quality, bad anatomy, worst quality, low resolution",
+        negative_prompt: Optional[str] = None,
         width: int = 1024,
         height: int = 1024,
         steps: Optional[int] = None,
         guidance_scale: Optional[float] = None,
         seed: Optional[int] = None,
+        scheduler: Optional[str] = None,
+        lora: Optional[str] = None,
+        lora_weight: Optional[str] = None,
+        lora_scale: float = 1.0,
     ) -> list:
         """Generate an image from a text prompt using a local diffusion model.
 
@@ -102,69 +97,123 @@ def create_mcp_server():
 
         Args:
             prompt: Text description of the desired image
-            model: Model to use (auto-loads if needed). Leave empty to use current model.
+            model: Model to use, e.g. z-image-turbo-mlx (fast) or qwen-image-2.1-turbo-mlx
+                (text in pictures). Leave empty for the model already running.
             negative_prompt: What to avoid in the image
             width: Image width in pixels
             height: Image height in pixels
             steps: Number of inference steps (model-specific default if omitted)
             guidance_scale: Guidance scale (model-specific default if omitted)
-            seed: Random seed for reproducibility
+            seed: Random seed for reproducibility (one is picked and reported if omitted)
+            scheduler: A sampling schedule the model takes, e.g. viggle_turbo
+            lora: A LoRA to apply: a .safetensors path or a Hugging Face repo
+            lora_weight: The file inside that repo, when it holds several
+            lora_scale: How strongly to apply the LoRA
         """
-        # A server already holding the model does the work: loading it here
-        # as well would put a second copy — tens of GB — in memory.
-        # Named model: a server holding it. No name and nothing loaded here:
-        # any server holding a model. Otherwise this process's own model.
-        if model:
-            base = await asyncio.to_thread(_serving, model)
-        elif not model_manager.is_model_loaded():
-            base = await asyncio.to_thread(_serving, None)
-        else:
-            base = None
-        if base:
-            used = model or "the running server's model"
-            try:
-                png = await asyncio.to_thread(_generate_over_http, base, {
-                    "prompt": prompt, "negative_prompt": negative_prompt, "width": width,
-                    "height": height, "steps": steps, "cfg_scale": guidance_scale, "seed": seed,
-                })
-            except Exception as e:
-                raise ToolError(f"The OllamaDiffuser server at {base} failed: {e}")
-        else:
-            if model and model_manager.get_current_model() != model:
-                if not model_manager.is_model_installed(model):
-                    raise ToolError(
-                        f"Model '{model}' is not installed. "
-                        f"Install it first: ollamadiffuser pull {model}"
-                    )
-                logger.info(f"Loading model: {model}")
-                success = await asyncio.to_thread(model_manager.load_model, model)
-                if not success:
-                    raise ToolError(f"Failed to load model '{model}'")
+        result = await _run(jobs.Job(
+            kind="image", prompt=prompt, model=model, negative_prompt=negative_prompt,
+            width=width, height=height, steps=steps, guidance=guidance_scale, seed=seed,
+            scheduler=scheduler, lora=lora, lora_weight=lora_weight, lora_scale=lora_scale,
+        ))
+        return [_said(result), Image(data=Path(result["path"]).read_bytes(), format="png")]
 
-            if not model_manager.is_model_loaded():
-                raise ToolError(
-                    "No model loaded. Load one with: load_model('model-name') "
-                    "or pass model= parameter"
-                )
+    @mcp_server.tool()
+    async def edit_image(
+        prompt: str,
+        image: str,
+        references: Optional[List[str]] = None,
+        mask: Optional[str] = None,
+        strength: Optional[float] = None,
+        model: Optional[str] = None,
+        negative_prompt: Optional[str] = None,
+        steps: Optional[int] = None,
+        guidance_scale: Optional[float] = None,
+        seed: Optional[int] = None,
+        scheduler: Optional[str] = None,
+        lora: Optional[str] = None,
+        lora_weight: Optional[str] = None,
+        lora_scale: float = 1.0,
+    ) -> list:
+        """Edit a picture by instruction ("make it a snowy night", "put the person from
+        image 2 into image 1"), and return the saved path and the result.
 
-            used = model_manager.get_current_model()
-            engine = model_manager.loaded_model
-            result = await asyncio.to_thread(
-                engine.generate_image,
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                num_inference_steps=steps,
-                guidance_scale=guidance_scale,
-                width=width,
-                height=height,
-                seed=seed,
-            )
-            buf = io.BytesIO()
-            result.save(buf, format="PNG")
-            png = buf.getvalue()
+        Args:
+            prompt: The instruction
+            image: Path of the picture to edit, on this machine; it sets the output size
+            references: Paths of further pictures for models that take several
+                (image 2, image 3, ...)
+            mask: Path of a mask (white where to change), for models that take one
+            strength: How far to move from the picture (model default if omitted)
+            model: An editing model, e.g. qwen-image-2.1-edit-mlx or flux.2-klein-4b-edit-mlx.
+                Leave empty for the model already running.
+            negative_prompt: What to avoid
+            steps: Number of inference steps (model-specific default if omitted)
+            guidance_scale: Guidance scale (model-specific default if omitted)
+            seed: Random seed (one is picked and reported if omitted)
+            scheduler: A sampling schedule the model takes
+            lora: A LoRA to apply: a .safetensors path or a Hugging Face repo
+            lora_weight: The file inside that repo, when it holds several
+            lora_scale: How strongly to apply the LoRA
+        """
+        result = await _run(jobs.Job(
+            kind="edit", prompt=prompt, model=model, image=image, references=list(references or []),
+            mask=mask, strength=strength, negative_prompt=negative_prompt, steps=steps,
+            guidance=guidance_scale, seed=seed, scheduler=scheduler, lora=lora,
+            lora_weight=lora_weight, lora_scale=lora_scale,
+        ))
+        return [_said(result), Image(data=Path(result["path"]).read_bytes(), format="png")]
 
-        path = await asyncio.to_thread(_save, png, seed)
-        return [f"Saved to {path} ({used})", Image(data=png, format="png")]
+    @mcp_server.tool()
+    async def generate_video(
+        prompt: str,
+        model: Optional[str] = None,
+        seconds: Optional[float] = None,
+        frames: Optional[int] = None,
+        width: Optional[int] = None,
+        height: Optional[int] = None,
+        seed: Optional[int] = None,
+        steps: Optional[int] = None,
+        image: Optional[str] = None,
+        audio: Optional[str] = None,
+    ) -> str:
+        """Make a short video (an mp4) and return where it was saved.
+
+        Args:
+            prompt: What happens in the video
+            model: A video model, e.g. ltx-2.3-mlx-q8 on a Mac. Leave empty for the model
+                already running.
+            seconds: Length (model default if omitted)
+            frames: Length in frames; wins over seconds
+            width: Width in pixels (model default if omitted)
+            height: Height in pixels (model default if omitted)
+            seed: Random seed (one is picked and reported if omitted)
+            steps: Number of inference steps (model default if omitted)
+            image: Path of a picture to start from (image-to-video)
+            audio: Path of an audio track to drive it (e.g. a voice for a talking face)
+        """
+        result = await _run(jobs.Job(
+            kind="video", prompt=prompt, model=model, seconds=seconds, frames=frames,
+            width=width, height=height, seed=seed, steps=steps, image=image, audio=audio,
+        ))
+        return _said(result)
+
+    @mcp_server.tool()
+    async def list_servers() -> str:
+        """List the OllamaDiffuser servers running on this machine and the model each
+        holds. A job for one of those models goes to its server instead of loading the
+        model a second time."""
+        found = await asyncio.to_thread(jobs.servers)
+        if not found:
+            return "No OllamaDiffuser server is running."
+        lines = []
+        for server in found:
+            if server["loaded"]:
+                what = f"{server['model']} ({server['type']}, {server['device']})"
+            else:
+                what = "no model loaded" if server["answering"] else "not answering"
+            pid = f", pid {server['pid']}" if server["pid"] else ""
+            lines.append(f"port {server['port']}: {what}{pid}")
+        return "\n".join(lines)
 
     @mcp_server.tool()
     async def list_models() -> str:
@@ -211,7 +260,8 @@ def create_mcp_server():
         success = await asyncio.to_thread(model_manager.load_model, model_name)
         if success:
             return f"Model '{model_name}' loaded successfully"
-        return f"Failed to load model '{model_name}'"
+        reason = getattr(model_manager, "last_error", None)
+        return reason if isinstance(reason, str) and reason else f"Failed to load model '{model_name}'"
 
     @mcp_server.tool()
     async def get_status() -> str:

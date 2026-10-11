@@ -132,6 +132,36 @@ class TestImg2ImgEndpoint:
         assert colours == [(255, 0, 0), (0, 128, 0), (0, 0, 255)]
         assert kwargs["image"].getpixel((0, 0)) == (255, 0, 0)
 
+    def test_a_mask_reaches_the_model_only_when_sent(self, client):
+        """Qwen-Image-2.1's edit takes a mask; `ollamadiffuser edit --mask`
+        sends it here when a server already holds the model."""
+        tc, mm = client
+        engine = self._engine(mm)
+        tc.post("/api/generate/img2img", data={"prompt": "p"},
+                files={"image": ("a.png", self._png("red"), "image/png")})
+        assert "mask_image" not in engine.generate_image.call_args.kwargs
+        tc.post("/api/generate/img2img", data={"prompt": "p"},
+                files=[("image", ("a.png", self._png("red"), "image/png")),
+                       ("mask", ("m.png", self._png("white"), "image/png"))])
+        assert engine.generate_image.call_args.kwargs["mask_image"].getpixel((0, 0)) == (255, 255, 255)
+
+    def test_an_input_the_model_needs_is_the_callers_to_fix(self, client):
+        tc, mm = client
+        engine = self._engine(mm)
+        engine.generate_image.side_effect = ValueError("qwen21-controlnet needs control_image")
+        resp = tc.post("/api/generate/img2img", data={"prompt": "p"},
+                       files={"image": ("a.png", self._png("red"), "image/png")})
+        assert resp.status_code == 400 and "control_image" in resp.json()["detail"]
+
+
+class TestLoadEndpoint:
+    def test_a_refused_load_says_why(self, client):
+        tc, mm = client
+        mm.load_model.return_value = False
+        mm.last_error = "qwen-image-2.1-mlx needs about 46 GB of memory and 12.0 GB is free."
+        resp = tc.post("/api/models/load", json={"model_name": "qwen-image-2.1-mlx"})
+        assert resp.status_code == 400 and "needs about 46 GB" in resp.json()["detail"]
+
 
 class TestFaceCompareEndpoint:
     @staticmethod

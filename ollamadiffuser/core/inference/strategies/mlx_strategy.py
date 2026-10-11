@@ -792,6 +792,15 @@ class MLXStrategy(InferenceStrategy):
         extra_paths = self._materialize_image_path_list(kwargs.get("images"))
         if variant_takes_list and extra_paths:
             image_path = image_path or extra_paths[0]
+        # mflux's klein editor concatenates the reference tokens whether there
+        # are any or not: with no picture it fails with a TypeError out of mlx
+        # (0.19.2 and 0.22 alike), which reads like a bug in the caller's code.
+        if self._variant == "flux2-edit" and not image_path:
+            raise ValueError(
+                "FLUX.2 klein's editor needs a picture to edit — mflux's edit class cannot draw "
+                "without one. Pass a picture, or use a text-to-image entry "
+                "(flux.2-klein-4b-mlx, flux.2-klein-9b-mlx)."
+            )
 
         # Build the kwargs we'd LIKE to pass; filter to what this variant's
         # generate_image() actually accepts (Flux2Klein has no negative_prompt

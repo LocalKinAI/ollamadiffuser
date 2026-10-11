@@ -6,6 +6,12 @@
 
 ## 🆕 What's New
 
+### Unreleased — one command for agents
+
+- **`ollamadiffuser generate / edit / video`** make a picture, an edit or a clip in one command, and print the file (`--json` for scripts and agents). The job goes to a server that already holds the model, or loads it for the job. See [Using OllamaDiffuser from agents](#using-ollamadiffuser-from-agents).
+- **`ps --json`, `list --json`, `stop --port N` / `--all`**; MCP gains `edit_image`, `generate_video` and `list_servers`; a Claude Code skill in `integrations/claude-code/`.
+- **On a Mac, a model that won't fit in free memory isn't loaded** (`--force` to insist), and a failed generation is now an error rather than a picture of one.
+
 ### v2.2.0 — Qwen-Image-2.1 edits and its Turbo on a Mac
 
 The first PyPI release since 2.1.0. Upgrade with `pip install -U ollamadiffuser`, then `ollamadiffuser enable mlx` on a Mac (mflux 0.22); full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -623,9 +629,18 @@ On LTX video, pass `lora=` (a local `.safetensors` or a hub repo id) and `lora_s
 
 ### Command Line Interface
 ```bash
-# Pull and run a model
+# One picture, one edit, one clip: each prints the file it wrote
+ollamadiffuser generate "a red fox in snow" -m z-image-turbo-mlx -o fox.png
+ollamadiffuser edit "make it a snowy night" -i cabin.png -m qwen-image-2.1-edit-mlx
+ollamadiffuser video "waves at dusk" -m ltx-2.3-mlx-q8 -s 4
+
+# Pull and run a model as a server
 ollamadiffuser pull stable-diffusion-1.5
 ollamadiffuser run stable-diffusion-1.5
+
+# What is running, and stopping it
+ollamadiffuser ps                     # every server on this machine and its model
+ollamadiffuser stop --port 8010       # or --all
 
 # Model registry management
 ollamadiffuser registry list
@@ -717,11 +732,31 @@ ollamadiffuser mcp
 
 Works with mcp 1.x and 2.x.
 
+For Claude Code: `claude mcp add ollamadiffuser -- ollamadiffuser mcp`.
+
 **Available MCP tools:**
-- `generate_image` -- Generate images from text prompts (auto-loads model). Returns the saved file's path as text and the image itself; when an `ollamadiffuser run` server already holds the model, that server does the work
+- `generate_image` -- Generate images from text prompts (auto-loads model; takes a `scheduler` and a `lora`). Returns the saved file's path as text and the image itself; when an `ollamadiffuser run` server already holds the model, that server does the work
+- `edit_image` -- Edit a picture by instruction: the picture's path, more references, a mask, a strength
+- `generate_video` -- Make a short video, from a prompt, a first frame or an audio track; returns the mp4's path
+- `list_servers` -- The OllamaDiffuser servers running on this machine and the model each holds
 - `list_models` -- List available and installed models
-- `load_model` -- Load a model into memory
+- `load_model` -- Load a model into memory (says why when it won't fit)
 - `get_status` -- Check device, loaded model, and system status
+
+### Using OllamaDiffuser from agents
+
+An agent with a shell (Claude Code, Codex, OpenClaw, a script) needs no server and no MCP:
+
+```bash
+ollamadiffuser generate "a poster that reads 海边小屋" -m qwen-image-2.1-turbo-mlx -o poster.png --json
+# {"path": "/…/poster.png", "kind": "image", "model": "qwen-image-2.1-turbo-mlx", "seed": 1873, "elapsed_s": 36.2, "server": null}
+```
+
+- **One command, one file.** `generate`, `edit` and `video` print the file they wrote. With `--json`, stdout is one JSON object, or `{"error": …}` with exit code 1, and everything else goes to stderr.
+- **No second copy.** When a server already holds the model (`ollamadiffuser run`, the ComfyUI nodes, another agent), the job goes to it. Otherwise the model loads for the job and is let go after it.
+- **Seeing what runs.** `ollamadiffuser ps --json` lists every server on this machine and its model, including servers started by older versions or from another config directory. `list --json` lists installed models with their memory needs, and `stop --port N` / `--all` stops servers.
+- **Memory.** On Apple Silicon, where the GPU shares the machine's memory, a model is not loaded when less than its minimum is free. The error gives the numbers. `--force` (or `OLLAMADIFFUSER_SKIP_MEMORY_CHECK=1`) loads it anyway.
+- **A ready-made skill** for Claude Code and other skill-aware agents is at [`integrations/claude-code/ollamadiffuser/SKILL.md`](integrations/claude-code/ollamadiffuser/SKILL.md). Copy the folder to `~/.claude/skills/`.
 
 ### OpenClaw AgentSkill
 

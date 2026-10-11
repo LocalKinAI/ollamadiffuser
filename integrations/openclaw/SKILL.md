@@ -1,8 +1,8 @@
 ---
 name: ollamadiffuser
 display_name: OllamaDiffuser - Local AI Image Generation
-description: Generate images using locally-running AI models (Stable Diffusion, FLUX, SDXL, and 30+ models) via OllamaDiffuser
-version: 1.0.0
+description: Generate and edit images, and make short videos, with locally-running AI models (FLUX, Qwen-Image, Z-Image, LTX-2, Stable Diffusion and 100+ more) via OllamaDiffuser
+version: 1.1.0
 author: LocalKinAI Team
 homepage: https://github.com/LocalKinAI/ollamadiffuser
 tags:
@@ -20,6 +20,20 @@ metadata:
 # OllamaDiffuser - Local AI Image Generation
 
 You can generate images using locally-installed AI diffusion models through the OllamaDiffuser API. All processing happens on the user's machine -- no cloud API keys required.
+
+## The Quickest Way: One Command
+
+`ollamadiffuser generate`, `edit` and `video` make a picture, an edit or a video in one command, with no server to start or stop (if `ollamadiffuser generate --help` fails, the install predates them: use the REST API below, or upgrade):
+
+```bash
+ollamadiffuser generate "a serene mountain lake at sunset" -m z-image-turbo-mlx -o lake.png --json
+ollamadiffuser edit "make it a snowy night" -i lake.png -m flux.2-klein-4b-edit-mlx -o snow.png --json
+ollamadiffuser video "waves on a beach at dusk" -m ltx-2.3-mlx-q8 -s 4 -o waves.mp4 --json
+```
+
+With `--json`, stdout is one object: `{"path", "kind", "model", "seed", "elapsed_s", "server"}`, or `{"error": "..."}` with exit code 1. When a server already holds the model, the job goes to it; otherwise the model loads for the job. `ollamadiffuser ps --json` lists the servers running, `ollamadiffuser list --json` the installed models. On Apple Silicon a model that does not fit in free memory is refused with the numbers; don't pass `--force` without asking the user.
+
+The REST API below is the way for many images in a row with one model loaded.
 
 ## Setup Check
 
@@ -55,7 +69,7 @@ Quick reference by hardware:
 - **Low VRAM (4-8 GB):** `stable-diffusion-1.5`, `dreamshaper`, `pixart-sigma`
 - **Medium (8-16 GB):** `realvisxl-v4`, `sana-1.5`, `flux.1-dev-gguf-q4ks`
 - **High VRAM (16+ GB):** `flux.1-schnell`, `stable-diffusion-3.5-large`
-- **Apple Silicon:** `pixart-sigma`, `dreamshaper`, `sdxl-turbo`, `sana-1.5`
+- **Apple Silicon (native MLX):** `z-image-turbo-mlx` (fast, 6 GB), `flux.2-klein-4b-mlx`, `qwen-image-2.1-turbo-mlx` (text in pictures, 46 GB); edits: `flux.2-klein-4b-edit-mlx`, `qwen-image-2.1-edit-mlx`; video: `ltx-2.3-mlx-q8`
 
 ## Model Management
 

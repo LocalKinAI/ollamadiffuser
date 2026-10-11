@@ -198,7 +198,7 @@ class InferenceEngine:
             gen_kwargs["control_guidance_start"] = control_guidance_start
             gen_kwargs["control_guidance_end"] = control_guidance_end
 
-        return self._strategy.generate(
+        image = self._strategy.generate(
             prompt=prompt,
             negative_prompt=negative_prompt,
             num_inference_steps=num_inference_steps,
@@ -208,6 +208,13 @@ class InferenceEngine:
             seed=seed,
             **gen_kwargs,
         )
+        # A strategy that failed returns a card with the error drawn on it
+        # (base._create_error_image). Passed on, it is a success that isn't
+        # one; the API, the web UI and one-off jobs all report an exception.
+        error = getattr(image, "info", {}).get("ollamadiffuser_error")
+        if error:
+            raise RuntimeError(error)
+        return image
 
     def generate_video(
         self,

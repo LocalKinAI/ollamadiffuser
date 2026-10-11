@@ -342,6 +342,23 @@ class TestInferenceStrategyBase:
         img = s._create_error_image("test error", "test prompt")
         assert isinstance(img, Image.Image)
         assert img.size == (512, 512)
+        assert img.info["ollamadiffuser_error"] == "test error"
+
+    def test_a_failed_generation_is_an_error_not_a_picture(self):
+        """On the box a FLUX.2 klein edit with no picture failed inside mflux,
+        and the API answered 200 with the 512px error card — a one-off job
+        reported success and the next edit worked on the card."""
+        from ollamadiffuser.core.inference.base import InferenceStrategy
+        from ollamadiffuser.core.inference.engine import InferenceEngine
+
+        class Failing(InferenceStrategy):
+            def load(self, *a, **kw): return True
+            def generate(self, prompt, **kw): return self._create_error_image("concatenate() failed", prompt)
+
+        engine = InferenceEngine()
+        engine._strategy = Failing()
+        with pytest.raises(RuntimeError, match="concatenate"):
+            engine.generate_image(prompt="p")
 
 
 class TestStrengthIsNotInvented:

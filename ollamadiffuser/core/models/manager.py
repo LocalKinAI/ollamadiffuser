@@ -84,6 +84,7 @@ class ModelManager:
         self.loaded_model: Optional[object] = None
         self.current_model_name: Optional[str] = None
         self.current_model_type: Optional[str] = None  # Track model type
+        self.last_error: Optional[str] = None  # why the last load_model() failed
     
     @property
     def model_registry(self):
@@ -369,21 +370,40 @@ class ModelManager:
             logger.error(f"Failed to remove model: {e}")
             return False
     
-    def load_model(self, model_name: str) -> bool:
-        """Load model into memory (supports both regular and GGUF models)"""
+    def load_model(self, model_name: str, force: bool = False, persist: bool = True) -> bool:
+        """Load model into memory (supports both regular and GGUF models).
+
+        On Apple Silicon the load is refused when free memory is below what
+        the model needs (utils/memory_check.py); ``force`` loads it anyway.
+        ``persist=False`` leaves config.json's current model alone — a one-off
+        job that loads, generates and exits is nobody's current model. Why a
+        load failed is left in ``last_error`` for the caller to show.
+        """
+        self.last_error = None
         if not self.is_model_installed(model_name):
-            logger.error(f"Model {model_name} is not installed")
+            self.last_error = (f"Model {model_name} is not installed. "
+                               f"Install it first: ollamadiffuser pull {model_name}")
+            logger.error(self.last_error)
             return False
-        
+
         # If the same model is already loaded, return directly
         if self.current_model_name == model_name:
             logger.info(f"Model {model_name} is already loaded")
             return True
-        
+
         # Unload current model
         if self.loaded_model is not None:
-            self.unload_model()
-        
+            self.unload_model(persist=persist)
+
+        # Checked after the unload, which gave the old model's memory back.
+        if not force:
+            from ..utils import memory_check
+            reason = memory_check.refusal(model_name, model_registry.get_model(model_name))
+            if reason:
+                self.last_error = reason
+                logger.error(reason)
+                return False
+
         try:
             model_config = settings.models[model_name]
 
@@ -402,9 +422,10 @@ class ModelManager:
             # Check if this is a GGUF model
             if self.is_gguf_model(model_name):
                 if not GGUF_AVAILABLE:
-                    logger.error("GGUF support not available. Install with: pip install llama-cpp-python gguf")
+                    self.last_error = "GGUF support not available. Enable it with: ollamadiffuser enable gguf"
+                    logger.error(self.last_error)
                     return False
-                
+
                 # Load GGUF model
                 model_config_dict = {
                     'name': model_name,
@@ -418,11 +439,13 @@ class ModelManager:
                     self.loaded_model = gguf_loader
                     self.current_model_name = model_name
                     self.current_model_type = 'gguf'
-                    settings.set_current_model(model_name)
+                    if persist:
+                        settings.set_current_model(model_name)
                     logger.info(f"GGUF model {model_name} loaded successfully")
                     return True
                 else:
-                    logger.error(f"GGUF model {model_name} failed to load")
+                    self.last_error = f"GGUF model {model_name} failed to load (see the log above)"
+                    logger.error(self.last_error)
                     return False
             else:
                 # Load regular diffusion model
@@ -434,19 +457,25 @@ class ModelManager:
                     self.loaded_model = engine
                     self.current_model_name = model_name
                     self.current_model_type = 'diffusion'
-                    settings.set_current_model(model_name)
+                    if persist:
+                        settings.set_current_model(model_name)
                     logger.info(f"Model {model_name} loaded successfully")
                     return True
                 else:
-                    logger.error(f"Model {model_name} failed to load")
+                    self.last_error = f"Model {model_name} failed to load (see the log above)"
+                    logger.error(self.last_error)
                     return False
-                
+
         except Exception as e:
-            logger.error(f"Failed to load model: {e}")
+            self.last_error = f"Failed to load model {model_name}: {e}"
+            logger.error(self.last_error)
             return False
-    
-    def unload_model(self):
-        """Unload current model (supports both regular and GGUF models)"""
+
+    def unload_model(self, persist: bool = True):
+        """Unload current model (supports both regular and GGUF models).
+
+        ``persist=False`` leaves config.json's current model as it is.
+        """
         if self.loaded_model is not None:
             try:
                 if self.current_model_type == 'gguf':
@@ -465,8 +494,9 @@ class ModelManager:
                 self.current_model_type = None
         
         # Also clear the persisted state
-        settings.current_model = None
-        settings.save_config()
+        if persist:
+            settings.current_model = None
+            settings.save_config()
     
     def get_current_model(self) -> Optional[str]:
         """Get current loaded model name"""

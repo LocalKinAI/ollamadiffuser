@@ -183,7 +183,9 @@ def create_app() -> FastAPI:
         if success:
             return {"message": f"Model {request.model_name} loaded successfully"}
         raise HTTPException(
-            status_code=400, detail=f"Failed to load model {request.model_name}"
+            status_code=400,
+            detail=getattr(model_manager, "last_error", None)
+            or f"Failed to load model {request.model_name}",
         )
 
     @app.post("/api/models/unload")
@@ -228,6 +230,9 @@ def create_app() -> FastAPI:
             if request.response_format == "b64_json":
                 return _image_to_json_response(image)
             return _image_to_response(image)
+        except ValueError as e:
+            # An input the model needs and did not get: the caller's to fix.
+            raise HTTPException(status_code=400, detail=str(e))
         except RuntimeError as e:
             # The model refused or returned something that is not a picture;
             # its own sentence is the useful one.
@@ -248,8 +253,13 @@ def create_app() -> FastAPI:
         scheduler: Optional[str] = Form(None),
         image: UploadFile = File(...),
         images: Optional[List[UploadFile]] = File(None),
+        mask: Optional[UploadFile] = File(None),
     ):
         """Image-to-image generation.
+
+        ``mask`` says where to change the picture, for an editor that takes
+        one (Qwen-Image-2.1's edit, FLUX.1 Fill); it is forwarded only when
+        given.
 
         ``images`` are further reference pictures, for an editor that takes
         several (FLUX.2 klein: up to four). ``image`` stays the first — it
@@ -276,6 +286,11 @@ def create_app() -> FastAPI:
             data = await extra.read()
             if data:  # an empty part is a form field left blank, not a picture
                 references.append(Image.open(io.BytesIO(data)).convert("RGB"))
+        mask_image = None
+        if mask is not None:
+            data = await mask.read()
+            if data:
+                mask_image = Image.open(io.BytesIO(data)).convert("RGB")
 
         try:
             result = await asyncio.to_thread(
@@ -289,10 +304,14 @@ def create_app() -> FastAPI:
                 seed=seed,
                 image=input_image,
                 **({"images": references} if len(references) > 1 else {}),
+                **({"mask_image": mask_image} if mask_image is not None else {}),
                 **({"strength": strength} if strength is not None else {}),
                 **({"scheduler": scheduler} if scheduler else {}),
             )
             return _image_to_response(result)
+        except ValueError as e:
+            # An input the model needs and did not get: the caller's to fix.
+            raise HTTPException(status_code=400, detail=str(e))
         except RuntimeError as e:
             # The model refused or returned something that is not a picture;
             # its own sentence is the useful one.

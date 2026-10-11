@@ -224,10 +224,16 @@ class InferenceStrategy(ABC):
         return image
 
     def _create_error_image(self, error_msg: str, prompt: str) -> Image.Image:
-        """Create an error placeholder image"""
+        """Create an error placeholder image.
+
+        It carries the error in ``info["ollamadiffuser_error"]``, so the
+        engine can raise it: handed on as a result, a 512px card of red text
+        came back as a 200 from the API and a success from a one-off job.
+        """
         from PIL import ImageDraw, ImageFont
 
         img = Image.new("RGB", (512, 512), color=(255, 255, 255))
+        img.info["ollamadiffuser_error"] = error_msg
         draw = ImageDraw.Draw(img)
         try:
             font = ImageFont.load_default()

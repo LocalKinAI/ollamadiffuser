@@ -15,7 +15,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Iterable, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -98,3 +98,52 @@ def ask(host: str, port: int, timeout: float = 2.0) -> Optional[Dict]:
     except Exception:
         pass
     return None
+
+
+# Where `run` and the ComfyUI nodes put servers.
+USUAL_PORTS = range(8000, 8020)
+
+
+def discover(ports: Iterable[int] = USUAL_PORTS, timeout: float = 1.0) -> List[Dict]:
+    """Every OllamaDiffuser server on this machine, and what each holds.
+
+    The records first, then the usual ports: a server started by an older
+    version, or with another config directory — an agent's sandbox — leaves
+    no record here but still answers. Each entry has ``port``, ``host``,
+    ``url``, ``pid`` (None when found by probing), ``answering``, ``loaded``,
+    ``model``, ``type`` and ``device``.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    recorded = {int(r["port"]): r for r in running() if r.get("port") is not None}
+    candidates = sorted(set(recorded) | {int(p) for p in ports})
+
+    def probe(port: int):
+        host = recorded.get(port, {}).get("host") or "127.0.0.1"
+        answer = ask(host, port, timeout=timeout)
+        # Something else may listen on these ports; ours answers this shape.
+        return port, host, answer if isinstance(answer, dict) and "loaded" in answer else None
+
+    with ThreadPoolExecutor(max_workers=max(1, min(16, len(candidates)))) as pool:
+        answers = list(pool.map(probe, candidates))
+
+    found = []
+    for port, host, answer in answers:
+        record = recorded.get(port)
+        if answer is None and record is None:
+            continue
+        loaded = bool(answer and answer.get("loaded"))
+        info = (answer or {}).get("info") or {}
+        url_host = "127.0.0.1" if host in ("0.0.0.0", "", None) else host
+        found.append({
+            "port": port,
+            "host": host,
+            "url": f"http://{url_host}:{port}",
+            "pid": record.get("pid") if record else None,
+            "answering": answer is not None,
+            "loaded": loaded,
+            "model": ((answer or {}).get("model") or info.get("name")) if loaded else None,
+            "type": info.get("type") if loaded else None,
+            "device": info.get("device") if loaded else None,
+        })
+    return found

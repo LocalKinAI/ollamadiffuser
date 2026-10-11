@@ -1,5 +1,6 @@
 """Model-related CLI commands for OllamaDiffuser."""
 
+import json
 import sys
 import subprocess
 from typing import Optional
@@ -89,7 +90,8 @@ def pull(model_name: str, force: bool):
 @click.argument('model_name')
 @click.option('--host', '-h', default=None, help='Server host address')
 @click.option('--port', '-p', default=None, type=int, help='Server port')
-def run(model_name: str, host: Optional[str], port: Optional[int]):
+@click.option('--force', is_flag=True, help='Load the model even if free memory looks too low')
+def run(model_name: str, host: Optional[str], port: Optional[int], force: bool):
     """Run model service"""
     rprint(f"[blue]Starting model service: {model_name}[/blue]")
 
@@ -100,8 +102,8 @@ def run(model_name: str, host: Optional[str], port: Optional[int]):
 
     # Load model
     rprint("[yellow]Loading model...[/yellow]")
-    if not model_manager.load_model(model_name):
-        rprint(f"[red]Failed to load model {model_name}![/red]")
+    if not model_manager.load_model(model_name, force=force):
+        rprint(f"[red]{model_manager.last_error or f'Failed to load model {model_name}!'}[/red]")
         sys.exit(1)
 
     rprint(f"[green]Model {model_name} loaded successfully![/green]")
@@ -125,10 +127,28 @@ def run(model_name: str, host: Optional[str], port: Optional[int]):
 
 @click.command()
 @click.option('--hardware', '-hw', is_flag=True, help='Show hardware requirements')
-def list(hardware: bool):
+@click.option('--json', 'as_json', is_flag=True, help='Print the installed models as JSON')
+def list(hardware: bool, as_json: bool):
     """List installed models only"""
     installed_models = model_manager.list_installed_models()
     current_model = model_manager.get_current_model()
+
+    if as_json:
+        rows = []
+        for model_name in installed_models:
+            info = model_manager.get_model_info(model_name) or {}
+            hw_req = info.get('hardware_requirements') or {}
+            rows.append({
+                "name": model_name,
+                "type": info.get('model_type'),
+                "mlx_variant": (info.get('parameters') or {}).get('mlx_variant'),
+                "min_memory_gb": hw_req.get('min_vram_gb'),
+                "size": info.get('size'),
+                "path": info.get('local_path'),
+                "notes": hw_req.get('performance_notes'),
+            })
+        click.echo(json.dumps(rows, indent=2, ensure_ascii=False))
+        return
 
     if not installed_models:
         rprint("[yellow]No models installed[/yellow]")
@@ -565,17 +585,23 @@ def rm(model_name: str):
         sys.exit(1)
 
 
-@click.command()
-def ps():
-    """Show the running model servers"""
+def _discover_servers():
+    """Running servers: the recorded ones, and any answering on the usual
+    ports or the configured one — started by an older version, or with
+    another config directory, they leave no record but still answer."""
     from ..core.utils import server_registry
+    ports = set(server_registry.USUAL_PORTS) | {settings.server.port}
+    return server_registry.discover(sorted(ports))
 
-    servers = server_registry.running()
-    seen = {s.get("port") for s in servers}
-    # Servers started by earlier versions left no record; the default port
-    # still answers for them.
-    if settings.server.port not in seen and model_manager.is_server_running():
-        servers.append({"host": settings.server.host, "port": settings.server.port, "pid": None})
+
+@click.command()
+@click.option('--json', 'as_json', is_flag=True, help='Print the servers as JSON')
+def ps(as_json: bool):
+    """Show the running model servers"""
+    servers = _discover_servers()
+    if as_json:
+        click.echo(json.dumps(servers, indent=2))
+        return
 
     if not servers:
         rprint("[yellow]No model server is running[/yellow]")
@@ -589,29 +615,28 @@ def ps():
     table.add_column("Device")
     table.add_column("PID", style="dim")
     for server in servers:
-        answer = server_registry.ask(server.get("host"), server.get("port"))
-        if answer is None:
-            model, kind, device = "[red]not answering[/red]", "", ""
-        elif answer.get("loaded"):
-            info = answer.get("info") or {}
-            model = answer.get("model") or info.get("name") or "?"
-            kind, device = str(info.get("type", "")), str(info.get("device", ""))
+        if not server["answering"]:
+            model = "[red]not answering[/red]"
+        elif server["loaded"]:
+            model = server["model"] or "?"
         else:
-            model, kind, device = "[yellow](no model loaded)[/yellow]", "", ""
-        table.add_row(str(server.get("port")), model, kind, device, str(server.get("pid") or ""))
+            model = "[yellow](no model loaded)[/yellow]"
+        table.add_row(str(server["port"]), model, str(server["type"] or ""),
+                      str(server["device"] or ""), str(server["pid"] or ""))
     console.print(table)
 
 
 @click.command()
 @click.argument('model_name')
-def load(model_name: str):
+@click.option('--force', is_flag=True, help='Load the model even if free memory looks too low')
+def load(model_name: str, force: bool):
     """Load model into memory"""
     rprint(f"[blue]Loading model: {model_name}[/blue]")
 
-    if model_manager.load_model(model_name):
+    if model_manager.load_model(model_name, force=force):
         rprint(f"[green]Model {model_name} loaded successfully![/green]")
     else:
-        rprint(f"[red]Failed to load model {model_name}![/red]")
+        rprint(f"[red]{model_manager.last_error or f'Failed to load model {model_name}!'}[/red]")
         sys.exit(1)
 
 
@@ -639,22 +664,37 @@ def serve(host: Optional[str], port: Optional[int]):
 
 
 @click.command()
-def stop():
-    """Stop the running server"""
+@click.option('--port', '-p', type=int, default=None, help='Stop the server on this port')
+@click.option('--all', 'stop_all', is_flag=True, help='Stop every OllamaDiffuser server running here')
+def stop(port: Optional[int], stop_all: bool):
+    """Stop a running server (the default port's, unless told which)"""
     import requests
 
-    server_host = settings.server.host
-    server_port = settings.server.port
+    if stop_all:
+        targets = [s for s in _discover_servers() if s["answering"]]
+        if not targets:
+            rprint("[yellow]No server running[/yellow]")
+            return
+    elif port:
+        recorded = {s["port"]: s for s in _discover_servers()}
+        targets = [recorded.get(port) or {"port": port, "url": f"http://127.0.0.1:{port}"}]
+    else:
+        targets = [{"port": settings.server.port,
+                    "url": f"http://{settings.server.host}:{settings.server.port}"}]
 
-    try:
-        response = requests.post(
-            f"http://{server_host}:{server_port}/api/shutdown", timeout=5
-        )
-        if response.status_code == 200:
-            rprint("[green]Server shutdown initiated[/green]")
-        else:
-            rprint(f"[red]Failed to stop server: {response.status_code}[/red]")
-    except requests.ConnectionError:
-        rprint("[yellow]No server running or already stopped[/yellow]")
-    except Exception as e:
-        rprint(f"[red]Error stopping server: {e}[/red]")
+    for target in targets:
+        try:
+            response = requests.post(f"{target['url']}/api/shutdown", timeout=5)
+            if response.status_code == 200:
+                rprint(f"[green]Server on port {target['port']} shutting down[/green]")
+            else:
+                rprint(f"[red]Failed to stop the server on port {target['port']}: {response.status_code}[/red]")
+        except requests.ConnectionError:
+            rprint(f"[yellow]No server running on port {target['port']}, or already stopped[/yellow]")
+            if not stop_all and not port:
+                others = [s for s in _discover_servers() if s["answering"]]
+                if others:
+                    listed = ", ".join(f"{s['port']} ({s['model'] or 'no model'})" for s in others)
+                    rprint(f"[dim]Running elsewhere: {listed}. Use --port N or --all.[/dim]")
+        except Exception as e:
+            rprint(f"[red]Error stopping the server on port {target['port']}: {e}[/red]")

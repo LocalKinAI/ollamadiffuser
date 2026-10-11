@@ -30,6 +30,9 @@ def cli(ctx, verbose, version, mode, host, port):
 
     if verbose:
         logging.basicConfig(level=logging.DEBUG)
+        # api/server.py configured logging when it was imported, which makes
+        # basicConfig a no-op here; the level has to be set on the root.
+        logging.getLogger().setLevel(logging.DEBUG)
     else:
         logging.basicConfig(level=logging.WARNING)
 
@@ -80,6 +83,13 @@ cli.add_command(serve)
 cli.add_command(load)
 cli.add_command(unload)
 cli.add_command(stop)
+
+# --- Register one-off jobs (for scripts and agents) ---
+from .job_commands import generate, edit, video
+
+cli.add_command(generate)
+cli.add_command(edit)
+cli.add_command(video)
 
 # --- Register LoRA commands ---
 from .lora_commands import lora

@@ -163,6 +163,14 @@ class TestDispatch:
         """
         assert "flux2-edit" not in mlx_strategy._VARIANT_REQUIRED_INPUTS
 
+    def test_flux2_edit_without_a_picture_says_what_to_use(self):
+        """mflux 0.22 still fails without a reference, and the strategy used
+        to turn that into an error card the API answered 200 with — the box
+        test's lighthouse was that card, and two edits then worked on it."""
+        s = _load_fake(_FakeMflux, "flux2-edit", "klein-4b")
+        with pytest.raises(ValueError, match="needs a picture.*flux.2-klein-4b-mlx"):
+            s.generate("a lighthouse at dusk")
+
     def test_alias_routed_families_are_supported(self):
         # Every alias-routed family must also be in the supported set, or
         # load() refuses a variant the resolver can actually build.

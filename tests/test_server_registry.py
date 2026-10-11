@@ -61,6 +61,61 @@ def test_ps_shows_each_server_and_what_it_holds(home, monkeypatch):
 
 def test_ps_with_nothing_running(home, monkeypatch):
     from ollamadiffuser.cli import model_commands
-    monkeypatch.setattr(model_commands.model_manager, "is_server_running", lambda: False)
+    monkeypatch.setattr(server_registry, "ask", lambda host, port, timeout=2.0: None)
     result = CliRunner().invoke(model_commands.ps, [])
     assert "No model server is running" in result.output
+
+
+def _answer(model):
+    return {"loaded": True, "model": model, "info": {"type": "mlx", "device": "mps"}}
+
+
+def test_discover_finds_servers_that_left_no_record(home, monkeypatch):
+    """A server started with another config directory — an agent's sandbox —
+    or by an older version writes no record here, but still answers."""
+    server_registry.register("0.0.0.0", 8000, "z-image-turbo-mlx")
+    answers = {
+        8000: _answer("z-image-turbo-mlx"),
+        8010: _answer("qwen-turbo-one"),       # no record: found by probing
+        8015: {"status": "something else"},    # another program on the port
+    }
+    monkeypatch.setattr(server_registry, "ask", lambda host, port, timeout=2.0: answers.get(port))
+    found = {s["port"]: s for s in server_registry.discover()}
+    assert sorted(found) == [8000, 8010]
+    assert found[8000]["pid"] == os.getpid() and found[8000]["url"] == "http://127.0.0.1:8000"
+    assert found[8010]["pid"] is None and found[8010]["model"] == "qwen-turbo-one"
+    assert found[8010]["type"] == "mlx" and found[8010]["loaded"]
+
+
+def test_discover_reports_a_recorded_server_that_stopped_answering(home, monkeypatch):
+    server_registry.register("127.0.0.1", 8003, "z-image-turbo-mlx")
+    monkeypatch.setattr(server_registry, "ask", lambda host, port, timeout=2.0: None)
+    (only,) = server_registry.discover()
+    assert only["port"] == 8003 and not only["answering"] and only["model"] is None
+
+
+def test_ps_json_is_the_discovered_list(home, monkeypatch):
+    from ollamadiffuser.cli import model_commands
+    monkeypatch.setattr(server_registry, "ask", lambda host, port, timeout=2.0:
+                        _answer("ltx-2.3-mlx-q8") if port == 8012 else None)
+    result = CliRunner().invoke(model_commands.ps, ["--json"])
+    assert result.exit_code == 0, result.output
+    (only,) = json.loads(result.output)
+    assert only["port"] == 8012 and only["model"] == "ltx-2.3-mlx-q8"
+
+
+def test_stop_port_and_all(home, monkeypatch):
+    from ollamadiffuser.cli import model_commands
+    monkeypatch.setattr(server_registry, "ask", lambda host, port, timeout=2.0:
+                        _answer("m") if port in (8010, 8012) else None)
+    posted = []
+
+    class Ok:
+        status_code = 200
+
+    monkeypatch.setattr("requests.post", lambda url, timeout=None: posted.append(url) or Ok())
+    result = CliRunner().invoke(model_commands.stop, ["--port", "8012"])
+    assert result.exit_code == 0 and posted == ["http://127.0.0.1:8012/api/shutdown"]
+    posted.clear()
+    CliRunner().invoke(model_commands.stop, ["--all"])
+    assert sorted(posted) == ["http://127.0.0.1:8010/api/shutdown", "http://127.0.0.1:8012/api/shutdown"]
