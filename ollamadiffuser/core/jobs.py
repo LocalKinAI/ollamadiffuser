@@ -145,15 +145,20 @@ def _remote(url: str, model: Optional[str]) -> Dict:
     import requests
 
     try:
-        answer = requests.get(f"{url}/api/models/running", timeout=10).json()
-        if not isinstance(answer, dict) or "loaded" not in answer:
-            raise ValueError("not an OllamaDiffuser server")
-    except Exception as e:
+        response = requests.get(f"{url}/api/models/running", timeout=10)
+    except requests.RequestException as e:
         raise JobError(
-            f"No OllamaDiffuser server answers at {url} ({e}). Start one on that machine with "
-            f"`ollamadiffuser run MODEL --host 0.0.0.0 --port PORT`; the default host, localhost, "
-            f"takes no calls from other machines."
+            f"No OllamaDiffuser server answers at {url} ({type(e).__name__}). Start one on that "
+            f"machine with `ollamadiffuser run MODEL --host 0.0.0.0 --port PORT`; the default host, "
+            f"localhost, takes no calls from other machines."
         ) from e
+    try:
+        answer = response.json()
+    except ValueError:
+        answer = None
+    if not isinstance(answer, dict) or "loaded" not in answer:
+        raise JobError(f"Something answers at {url} (HTTP {response.status_code}), but it is not an "
+                       f"OllamaDiffuser server. Check the address and the port.")
     held = answer.get("model") if answer.get("loaded") else None
     if model and held and held != model:
         raise JobError(f"The server at {url} runs {held}, not {model}. Leave the model out to use "

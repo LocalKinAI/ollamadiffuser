@@ -2,9 +2,14 @@
 
 **Thank you for the incredible support and over 30,000 downloads!**
 
-`ollamadiffuser` is in **active development**. **v2.3.0**: **106 models** — 44 native on Apple Silicon through MLX (38 image models, 6 LTX-2 video packs) and 62 through diffusers — with **one-command image, edit and video jobs for scripts and agents**, **Qwen-Image-2.1 editing and its official 8-step Turbo on a Mac**, **video on Mac and NVIDIA**, **LoRAs on both backends**, and a compile-free install with a one-line `curl | sh` installer. See [What's New](#-whats-new) below. Part of the **[LocalKinAI](https://github.com/LocalKinAI)** ecosystem.
+`ollamadiffuser` is in **active development**. **v2.4.0**: **106 models** — 44 native on Apple Silicon through MLX (38 image models, 6 LTX-2 video packs) and 62 through diffusers — with **one-command image, edit and video jobs for scripts and agents, on this machine or another one's GPU**, **Qwen-Image-2.1 editing and its official 8-step Turbo on a Mac**, **video on Mac and NVIDIA**, **LoRAs on both backends**, and a compile-free install with a one-line `curl | sh` installer. See [What's New](#-whats-new) below. Part of the **[LocalKinAI](https://github.com/LocalKinAI)** ecosystem.
 
 ## 🆕 What's New
+
+### v2.4.0 — jobs on another machine's GPU
+
+- **`--server 192.168.0.21:8010`** on `generate`, `edit` and `video`, or `OLLAMADIFFUSER_SERVER` set once (MCP reads it too), sends the job to the OllamaDiffuser server on another machine. The pictures go up, the result comes back here, and nothing loads on this machine. `ps --host 192.168.0.21` lists what runs there. See [Using OllamaDiffuser from agents](#using-ollamadiffuser-from-agents).
+- **Fixed:** processes sharing `~/.ollamadiffuser/config.json` wrote over each other's changes. Each save now writes only its own changes, under a lock, in one rename. Restart servers started before the upgrade. Full notes in [CHANGELOG.md](CHANGELOG.md).
 
 ### v2.3.0 — one command for agents
 

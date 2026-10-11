@@ -314,6 +314,18 @@ class TestRemoteServer:
         with pytest.raises(JobError, match="--host 0.0.0.0"):
             jobs.run(Job("image", "p"), output_dir=str(tmp_path), manager=manager, server="192.168.0.21:8019")
 
+    def test_something_else_on_the_port_is_named_as_such(self, manager, monkeypatch, tmp_path):
+        class NotOurs:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                raise ValueError("Extra data: line 1 column 5")
+
+        monkeypatch.setattr("requests.get", lambda url, timeout=None: NotOurs())
+        with pytest.raises(JobError, match="not an OllamaDiffuser server"):
+            jobs.run(Job("image", "p"), output_dir=str(tmp_path), manager=manager, server="127.0.0.1:8019")
+
     def test_a_lora_is_not_forced_on_it(self, manager, remote, tmp_path):
         with pytest.raises(JobError, match="/api/lora/load"):
             jobs.run(Job("image", "p", lora="Viggle/turbo"), output_dir=str(tmp_path),
