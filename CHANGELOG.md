@@ -27,6 +27,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   model the server doesn't hold, or a port with no server, failed with a
   sentence.
 
+### 🔧 Fixed
+
+- **Processes sharing `~/.ollamadiffuser/config.json` wrote over each other's
+  changes.** Every `run`, `pull`, one-off job and agent holds the copy it
+  read when it started, and each save wrote that copy back whole. On the GPU
+  box, another session's new model entry and its parameter edits survived
+  a server's saves only by timing. Now a save applies only what this process
+  changed since it last read or wrote the file, onto the file as it is now.
+  Different models, and different parameters of one model, merge key by key.
+  Saves take turns under a lock (`config.json.lock`) and are written in one
+  rename, so no reader sees half a file. Three processes saving 15 models
+  each at once now keep all 45; the old code lost some.
+- Fields this version doesn't know, and entries it can't read, now stay in
+  the file. Before, one hand-added field made the whole file fail to load.
+  A file caught half-written by an older version is read again, and a broken
+  one is kept as `config.json.broken-<time>` instead of being lost.
+
 ## [2.3.0] - 2026-10-10
 
 A minor version because it adds commands, MCP tools and a memory check. Two
