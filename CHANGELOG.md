@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`ollamadiffuser serve` loads the model each request names.** The request
   carries `model` in `/api/generate`'s JSON, or as a form field in img2img,
   inpaint, ControlNet and video. One server serves every installed model,
-  one in memory at a time, the way Ollama does it. A request for another
+  one in memory at a time by default (more with `--max-loaded`, below), the
+  way Ollama does it. A request for another
   model takes its turn: the server unloads the current model and loads the
   one asked for. If the memory check refuses the new one, the previous model
   is put back and the answer is 503 with the reason. Requests take turns, so
@@ -31,6 +32,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Servers say how they take models.** `/api/models/running` and
   `/api/health` report `on_demand`, `pinned`, `keep_alive_s` and
   `unloads_in_s`, and `ps` shows them.
+
+### 🧠 Several models in memory: `serve --max-loaded N`
+
+- **`serve --max-loaded N`** keeps up to N models in memory
+  (`OLLAMADIFFUSER_MAX_LOADED_MODELS` sets it too). A job for one of them
+  starts with no load. A job for another model loads it beside them. The
+  least recently used model is unloaded when N are loaded already, or when
+  memory runs short.
+- **Jobs still run one at a time.** The box has one GPU, and one job
+  already keeps it busy. Two jobs at once would each run slower, finish no
+  sooner in total, and need working memory for both.
+- **Room before each job too.** If the machine filled up after a model
+  loaded (another program grew), the other models are unloaded, least
+  recently used first, before the job starts.
+- **On NVIDIA, free GPU memory decides** what is unloaded. Apple Silicon
+  goes by free memory, as before.
+- **A model that could not fit is refused before anything is unloaded**,
+  with a 503 and the numbers. "Could not fit" means that unloading every
+  other model would still not make room. If a load is refused or fails
+  after models were unloaded for it, they are loaded back, in their old
+  order.
+- **Per-model settings and reporting:**
+  - `--keep-alive` counts per model.
+  - `--preload` can be repeated.
+  - `/api/models/unload` takes an optional `model_name`.
+  - `/api/models/running` and `/api/health` list every model in memory
+    under `models`, each with `memory_gb` and `unloads_in_s`, and report
+    `max_loaded`.
+  - `ps` and MCP's `list_servers` show every model a server holds.
+  - A job goes to the server holding its model among several, and
+    otherwise to a server with room, so nobody's model is unloaded for it.
+- **Each model's peak stays its own.** The backend counts the whole
+  process, so a server holding several models would credit one with the
+  weights of all of them. The engine now tracks what each model's load and
+  jobs leave in memory, and records only the model's own share.
 
 ### 📏 The memory check goes by measured peaks
 

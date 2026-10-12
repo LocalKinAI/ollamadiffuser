@@ -688,9 +688,9 @@ Features:
 
 ### REST API
 ```bash
-# Start a server. It loads the model each request names, one in memory at a
-# time, and with --keep-alive gives the memory back after 10 idle minutes.
-ollamadiffuser serve --keep-alive 10m
+# Start a server. It loads the model each request names, keeps up to two in
+# memory, and with --keep-alive gives a model's memory back after 10 idle minutes.
+ollamadiffuser serve --max-loaded 2 --keep-alive 10m
 
 # Text-to-image
 curl -X POST http://localhost:8000/api/generate \
@@ -698,7 +698,7 @@ curl -X POST http://localhost:8000/api/generate \
   -d '{"model": "stable-diffusion-1.5", "prompt": "a beautiful landscape", "width": 1024, "height": 1024, "seed": 42}' \
   --output landscape.png
 
-# Image-to-image (another model: the server swaps it in)
+# Image-to-image (another model: the server loads it beside the first)
 curl -X POST http://localhost:8000/api/generate/img2img \
   -F "model=flux.2-klein-4b-edit-mlx" \
   -F "prompt=oil painting style" \
@@ -716,7 +716,9 @@ curl -X POST http://localhost:8000/api/generate/inpaint \
 # API docs: http://localhost:8000/docs
 ```
 
-`ollamadiffuser run MODEL` starts a server for that model only, and answers a request for another with 409. Both kinds take `--keep-alive`, and `/api/models/running` says which kind a server is and when its model will be let go.
+With `--max-loaded N` (default 1), a request for a model already in memory starts at once. One for another model loads it, and the least recently used model gives way when there are N already, or when memory runs short. Jobs still run one at a time: on one GPU, two at once finish no sooner and need the memory twice. A model that could not fit even with every other model unloaded is refused before anything is unloaded.
+
+`ollamadiffuser run MODEL` starts a server for that model only, and answers a request for another with 409. Both kinds take `--keep-alive`. `/api/models/running` says which kind a server is, lists the models it holds, and says when each will be let go.
 
 ### MCP Server (AI Assistant Integration)
 
@@ -766,7 +768,7 @@ ollamadiffuser generate "a poster that reads 海边小屋" -m qwen-image-2.1-tur
 - **One command, one file.** `generate`, `edit` and `video` print the file they wrote. With `--json`, stdout is one JSON object, or `{"error": …}` with exit code 1, and everything else goes to stderr.
 - **No second copy.** When a server already holds the model (`ollamadiffuser run`, the ComfyUI nodes, another agent), the job goes to it. When none does but one was started with `ollamadiffuser serve`, that one loads the model, so the next job finds it warm. Otherwise the model loads for the job and is let go after it.
 - **The GPU on another machine.** `--server 192.168.0.21:8010` sends the job to the OllamaDiffuser server running on that machine. Set it once with `OLLAMADIFFUSER_SERVER` instead; `ollamadiffuser mcp` reads it too. The pictures to edit go up from this machine, the result is saved on this machine, and nothing loads here. Start that server with `ollamadiffuser run MODEL --host 0.0.0.0 --port 8010`, because the default `localhost` takes no calls from other machines. `ollamadiffuser ps --host 192.168.0.21` lists what runs there.
-- **Seeing what runs.** `ollamadiffuser ps --json` lists every server on this machine and its model, including servers started by older versions or from another config directory. `list --json` lists installed models with their memory needs, and `stop --port N` / `--all` stops servers.
+- **Seeing what runs.** `ollamadiffuser ps --json` lists every server on this machine and the models it holds, including servers started by older versions or from another config directory. `list --json` lists installed models with their memory needs, and `stop --port N` / `--all` stops servers.
 - **Memory.** On Apple Silicon, where the GPU shares the machine's memory, a model is not loaded when less than its minimum is free. The error gives the numbers. `--force` (or `OLLAMADIFFUSER_SKIP_MEMORY_CHECK=1`) loads it anyway.
 - **A ready-made skill** for Claude Code and other skill-aware agents is at [`integrations/claude-code/ollamadiffuser/SKILL.md`](integrations/claude-code/ollamadiffuser/SKILL.md). Copy the folder to `~/.claude/skills/`.
 

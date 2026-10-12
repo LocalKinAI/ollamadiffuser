@@ -272,6 +272,14 @@ class TestListServersTool:
         text = _content(_run(server.call_tool("list_servers", {})))[0].text
         assert "No OllamaDiffuser server is running" in text
 
+    def test_a_server_keeping_several_lists_them_all(self, server, running_servers):
+        one = _a_server("flux.2-klein-4b-edit-mlx", 8010)
+        one.update(models=["flux.2-klein-4b-edit-mlx", "z-image-turbo-mlx"], on_demand=True, max_loaded=2)
+        running_servers.append(one)
+        text = _content(_run(server.call_tool("list_servers", {})))[0].text
+        assert "port 8010: flux.2-klein-4b-edit-mlx, z-image-turbo-mlx" in text
+        assert "loads models on demand, keeps up to 2 in memory" in text
+
 
 @MCP_SKIP
 class TestServerOnAnotherMachine:

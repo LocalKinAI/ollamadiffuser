@@ -141,6 +141,20 @@ class TestServersThatLoadOnDemand:
         jobs.run(Job("image", "p", model="z"), output_dir=str(tmp_path), manager=manager)
         assert posted[0][0] == "http://127.0.0.1:8012"
 
+    def test_a_server_keeping_the_model_beside_another_does_it(self, manager, running, posted, tmp_path):
+        keeper = _server("x", 8011, on_demand=True)
+        keeper.update(models=["x", "z"], max_loaded=2)
+        running.extend([_server(None, 8010, on_demand=True), keeper])
+        jobs.run(Job("image", "p", model="z"), output_dir=str(tmp_path), manager=manager)
+        assert posted[0][0] == "http://127.0.0.1:8011" and posted[0][1].model == "z"
+
+    def test_one_with_room_is_preferred_over_one_that_would_unload(self, manager, running, posted, tmp_path):
+        roomy = _server("y", 8012, on_demand=True)
+        roomy.update(models=["y"], max_loaded=2)
+        running.extend([_server("x", 8011, on_demand=True), roomy])
+        jobs.run(Job("image", "p", model="z"), output_dir=str(tmp_path), manager=manager)
+        assert posted[0][0] == "http://127.0.0.1:8012"
+
     def test_the_model_goes_with_the_request_even_when_the_job_named_none(self, manager, running, posted, tmp_path):
         running.append(_server("y", 8011))
         jobs.run(Job("image", "p"), output_dir=str(tmp_path), manager=manager)

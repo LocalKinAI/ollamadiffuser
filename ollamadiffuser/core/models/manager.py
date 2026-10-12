@@ -1,7 +1,8 @@
 import os
 import shutil
+from collections import OrderedDict
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 import logging
 import hashlib
 from huggingface_hub import login
@@ -85,6 +86,11 @@ class ModelManager:
         self.current_model_name: Optional[str] = None
         self.current_model_type: Optional[str] = None  # Track model type
         self.last_error: Optional[str] = None  # why the last load_model() failed
+        # How many models may stay in memory at once: one, unless a server
+        # keeps more (`serve --max-loaded N`). The current model is the one
+        # above; the others wait here, least recently used first.
+        self.max_loaded: int = 1
+        self._others: "OrderedDict[str, Tuple[object, Optional[str]]]" = OrderedDict()
     
     @property
     def model_registry(self):
@@ -350,9 +356,9 @@ class ModelManager:
             return False
         
         try:
-            # If currently using this model, unload it first
-            if self.current_model_name == model_name:
-                self.unload_model()
+            # If it is in memory, unload it first
+            if model_name in self.resident_models():
+                self.unload_model(name=model_name)
             
             # Delete model files
             model_config = settings.models[model_name]
@@ -373,11 +379,18 @@ class ModelManager:
     def load_model(self, model_name: str, force: bool = False, persist: bool = True) -> bool:
         """Load model into memory (supports both regular and GGUF models).
 
-        On Apple Silicon the load is refused when free memory is below what
-        the model needs (utils/memory_check.py); ``force`` loads it anyway.
-        ``persist=False`` leaves config.json's current model alone — a one-off
-        job that loads, generates and exits is nobody's current model. Why a
-        load failed is left in ``last_error`` for the caller to show.
+        A model already in memory is made the current one, with no load. A
+        new one gets room from the models in memory, least recently used
+        first: for the count (``max_loaded`` in all), and for the memory it
+        needs. A load that is refused or fails leaves memory as it was — the
+        models unloaded for it are loaded back.
+
+        On Apple Silicon the load is refused when free memory, with what
+        unloading the others would give back, is below what the model needs
+        (utils/memory_check.py); ``force`` loads it anyway. ``persist=False``
+        leaves config.json's current model alone — a one-off job that loads,
+        generates and exits is nobody's current model. Why a load failed is
+        left in ``last_error`` for the caller to show.
         """
         self.last_error = None
         if not self.is_model_installed(model_name):
@@ -390,20 +403,50 @@ class ModelManager:
         if self.current_model_name == model_name:
             logger.info(f"Model {model_name} is already loaded")
             return True
+        if model_name in self._others:
+            self._come_forward(model_name)
+            if persist:
+                settings.set_current_model(model_name)
+            logger.info(f"Model {model_name} is in memory already; now the current one")
+            return True
 
-        # Unload current model
-        if self.loaded_model is not None:
-            self.unload_model(persist=persist)
-
-        # Checked after the unload, which gave the old model's memory back.
-        if not force:
-            from ..utils import memory_check
-            reason = memory_check.refusal(model_name, model_registry.get_model(model_name))
+        from ..utils import memory_check
+        info = model_registry.get_model(model_name)
+        # Refused before anything is unloaded when unloading everything
+        # would still not make room: a request that cannot be served should
+        # not cost the others their place.
+        freeable = self._freeable_gb()
+        if not force and freeable is not None:
+            reason = memory_check.refusal(model_name, info, freeable_gb=freeable)
             if reason:
                 self.last_error = reason
                 logger.error(reason)
                 return False
 
+        previous = self._step_aside()
+        order = list(self._others)
+        unloaded = []
+        if self.is_gguf_model(model_name):
+            # stable-diffusion.cpp holds one model per process.
+            for name in [n for n, (_, kind) in self._others.items() if kind == 'gguf']:
+                unloaded.append(self._unload_other(name))
+        while self._others and len(self._others) >= self.max_loaded:
+            unloaded.append(self._unload_other(next(iter(self._others))))
+        while self._others and memory_check.short_gb(model_name, info) > 0:
+            unloaded.append(self._unload_other(next(iter(self._others))))
+
+        # Checked after the unloads, which gave their memory back.
+        reason = None if force else memory_check.refusal(model_name, info)
+        if reason:
+            self.last_error = reason
+            logger.error(reason)
+        elif self._load_new(model_name, persist):
+            return True
+        self._put_back(unloaded, order, previous)
+        return False
+
+    def _load_new(self, model_name: str, persist: bool) -> bool:
+        """Load ``model_name`` as the current model, with no room made for it."""
         try:
             model_config = settings.models[model_name]
 
@@ -471,32 +514,127 @@ class ModelManager:
             logger.error(self.last_error)
             return False
 
-    def unload_model(self, persist: bool = True):
-        """Unload current model (supports both regular and GGUF models).
+    def unload_model(self, persist: bool = True, name: Optional[str] = None):
+        """Unload ``name``, or every model in memory (supports both regular
+        and GGUF models). When the current model goes and others stay, the
+        most recently used of them becomes the current one.
 
         ``persist=False`` leaves config.json's current model as it is.
         """
+        if name is not None and name != self.current_model_name:
+            if name in self._others:
+                self._unload_other(name)
+            return
+        if name is None:
+            while self._others:
+                self._unload_other(next(iter(self._others)))
         if self.loaded_model is not None:
             try:
-                if self.current_model_type == 'gguf':
-                    # Unload GGUF model
-                    gguf_loader.unload_model()
-                    logger.info(f"GGUF model {self.current_model_name} unloaded")
-                else:
-                    # Unload regular model
-                    self.loaded_model.unload()
-                    logger.info(f"Model {self.current_model_name} unloaded")
-            except Exception as e:
-                logger.error(f"Failed to unload model: {e}")
+                self._release(self.loaded_model, self.current_model_type, self.current_model_name)
             finally:
                 self.loaded_model = None
                 self.current_model_name = None
                 self.current_model_type = None
-        
+        if self._others:
+            self._come_forward(next(reversed(self._others)))
+
         # Also clear the persisted state
         if persist:
-            settings.current_model = None
+            settings.current_model = self.current_model_name
             settings.save_config()
+
+    # --- Models kept in memory beside the current one ---
+
+    def resident_models(self) -> List[str]:
+        """The models in memory: the current one, then the others from the
+        most recently used."""
+        if self.loaded_model is None:
+            return []
+        return [self.current_model_name, *reversed(self._others)]
+
+    def engine_of(self, model_name: str) -> Optional[object]:
+        """The engine of ``model_name`` if it is in memory."""
+        if model_name is not None and model_name == self.current_model_name:
+            return self.loaded_model
+        kept = self._others.get(model_name)
+        return kept[0] if kept else None
+
+    def held_gb(self, model_name: str) -> Optional[float]:
+        """What ``model_name`` holds while it stays in memory (the engine's
+        count, inference/engine.py), or None when there is no telling."""
+        held = getattr(self.engine_of(model_name), "held_bytes", None)
+        return held / 1e9 if isinstance(held, (int, float)) else None
+
+    def make_room(self, model_name: str) -> List[str]:
+        """Before a job on ``model_name``, the current model: unload others,
+        least recently used first, while what the job adds to what the model
+        holds would not fit beside them. Returns the ones unloaded."""
+        if not self._others or model_name != self.current_model_name:
+            return []
+        from ..utils import memory_check
+        info = model_registry.get_model(model_name)
+        held = self.held_gb(model_name)
+        unloaded = []
+        while self._others and memory_check.short_gb(model_name, info, held_gb=held) > 0:
+            unloaded.append(self._unload_other(next(iter(self._others))))
+        return unloaded
+
+    def _freeable_gb(self) -> Optional[float]:
+        """What unloading every model in memory would give back; None when
+        one of them cannot tell."""
+        held = [self.held_gb(name) for name in self.resident_models()]
+        return None if None in held else sum(held)
+
+    def _step_aside(self) -> Optional[str]:
+        """Move the current model in with the others, as the most recently used."""
+        if self.loaded_model is None:
+            return None
+        name = self.current_model_name
+        self._others[name] = (self.loaded_model, self.current_model_type)
+        self._others.move_to_end(name)
+        self.loaded_model = self.current_model_name = self.current_model_type = None
+        return name
+
+    def _come_forward(self, model_name: str) -> None:
+        """Make ``model_name``, one of the others, the current model."""
+        engine, kind = self._others.pop(model_name)
+        self._step_aside()
+        self.loaded_model, self.current_model_name, self.current_model_type = engine, model_name, kind
+
+    def _unload_other(self, model_name: str) -> str:
+        engine, kind = self._others.pop(model_name)
+        self._release(engine, kind, model_name)
+        return model_name
+
+    @staticmethod
+    def _release(engine, kind: Optional[str], model_name: Optional[str]) -> None:
+        try:
+            if kind == 'gguf':
+                # Unload GGUF model
+                gguf_loader.unload_model()
+                logger.info(f"GGUF model {model_name} unloaded")
+            else:
+                # Unload regular model
+                engine.unload()
+                logger.info(f"Model {model_name} unloaded")
+        except Exception as e:
+            logger.error(f"Failed to unload model: {e}")
+
+    def _put_back(self, unloaded: List[str], order: List[str], previous: Optional[str]) -> None:
+        """Load back the models unloaded for a load that did not happen, in
+        their old order, and make ``previous`` the current model again."""
+        reason = self.last_error
+        for name in unloaded:
+            if self._load_new(name, persist=False):
+                self._step_aside()
+            else:
+                logger.error(f"Could not load {name} back: {self.last_error}")
+        for name in order:
+            if name in self._others:
+                self._others.move_to_end(name)
+        if previous in self._others:
+            self._come_forward(previous)
+        self.last_error = reason
     
     def get_current_model(self) -> Optional[str]:
         """Get current loaded model name"""

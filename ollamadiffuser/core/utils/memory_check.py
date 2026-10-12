@@ -64,16 +64,51 @@ def need_for(model_name: str, info: Optional[Dict]) -> Tuple[Optional[float], st
     return needed_gb(info), "the registry's estimate"
 
 
-def refusal(model_name: str, info: Optional[Dict]) -> Optional[str]:
-    """Why ``model_name`` should not be loaded now, or None when it may be."""
+def refusal(model_name: str, info: Optional[Dict], freeable_gb: float = 0.0) -> Optional[str]:
+    """Why ``model_name`` should not be loaded now, or None when it may be.
+
+    ``freeable_gb``: what unloading the other models this process holds would
+    give back — a server keeping several makes room that way first, so the
+    load is refused only when even that would not be enough.
+    """
     if os.environ.get(SKIP_ENV) or not unified_memory():
         return None
     (need, source), free = need_for(model_name, info), free_gb()
-    if need is None or free is None or free >= need:
+    if need is None or free is None or free + freeable_gb >= need:
         return None
+    others = (f", {free + freeable_gb:.1f} GB with the other models loaded here unloaded"
+              if freeable_gb > 0 else "")
     return (
-        f"{model_name} needs about {need:g} GB of memory ({source}) and {free:.1f} GB is free. "
+        f"{model_name} needs about {need:g} GB of memory ({source}) and {free:.1f} GB is free{others}. "
         "Free some first — `ollamadiffuser ps` lists the model servers running, "
         "`ollamadiffuser stop --port N` stops one — or load it anyway with --force "
         f"({SKIP_ENV}=1 for a server or an agent)."
     )
+
+
+def room_gb() -> Optional[float]:
+    """What a model could take now, in GB: free memory on Apple Silicon, free
+    GPU memory on NVIDIA (with what PyTorch keeps cached but unused); None
+    where there is no telling."""
+    if unified_memory():
+        return free_gb()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            free, _ = torch.cuda.mem_get_info()
+            cached = torch.cuda.memory_reserved() - torch.cuda.memory_allocated()
+            return (free + max(0, cached)) / 1e9
+    except Exception as e:
+        logger.debug(f"Could not read the free GPU memory: {e}")
+    return None
+
+
+def short_gb(model_name: str, info: Optional[Dict], held_gb: Optional[float] = 0.0) -> float:
+    """How much more memory than is free ``model_name`` needs now, in GB: 0
+    when it fits, or when there is no telling. ``held_gb``: what it holds
+    already — a model in memory about to run needs only the rest. What a
+    server unloads other models by; not a refusal, so not skipped on request."""
+    need, room = need_for(model_name, info)[0], room_gb()
+    if need is None or room is None:
+        return 0.0
+    return max(0.0, need - (held_gb or 0.0) - room)

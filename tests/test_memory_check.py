@@ -58,7 +58,7 @@ class TestLoadModel:
         return ModelManager()
 
     def test_a_refusal_loads_nothing_and_says_why(self, manager, monkeypatch):
-        monkeypatch.setattr(memory_check, "refusal", lambda name, info: "needs about 46 GB")
+        monkeypatch.setattr(memory_check, "refusal", lambda name, info, freeable_gb=0.0: "needs about 46 GB")
         with patch("ollamadiffuser.core.inference.engine.InferenceEngine") as engine_cls:
             assert manager.load_model("qwen-image-2.1-mlx") is False
         engine_cls.assert_not_called()
@@ -66,7 +66,7 @@ class TestLoadModel:
 
     def test_force_loads_anyway_and_persist_false_leaves_the_config_alone(self, manager, monkeypatch):
         from ollamadiffuser.core.config.settings import settings
-        monkeypatch.setattr(memory_check, "refusal", lambda name, info: "needs about 46 GB")
+        monkeypatch.setattr(memory_check, "refusal", lambda name, info, freeable_gb=0.0: "needs about 46 GB")
         engine = MagicMock()
         engine.load_model.return_value = True
         with patch("ollamadiffuser.core.inference.engine.InferenceEngine", return_value=engine):
@@ -120,8 +120,8 @@ class TestMeasuredPeaks:
         from ollamadiffuser.core.inference.engine import InferenceEngine
 
         class Meter:
-            def __init__(self, backend):
-                self.backend, self.peak_bytes = backend, None
+            def __init__(self, backend, held=None, others=0):
+                self.backend, self.peak_bytes, self.held_after = backend, None, held
 
             def __enter__(self):
                 return self
@@ -161,3 +161,118 @@ class TestMeasuredPeaks:
         assert engine._memory_backend() is None
         engine.model_config = ModelConfig(name="flux.1-schnell", path="/m", model_type="flux")
         assert engine._memory_backend() == "mps"
+
+
+def test_a_refusal_counts_what_unloading_the_others_would_free(mac, monkeypatch):
+    monkeypatch.setattr(memory_check, "free_gb", lambda: 30.0)
+    assert memory_check.refusal("qwen-image-2.1-mlx", QWEN, freeable_gb=20.0) is None
+    reason = memory_check.refusal("qwen-image-2.1-mlx", QWEN, freeable_gb=10.0)
+    assert "30.0 GB is free, 40.0 GB with the other models loaded here unloaded" in reason
+
+
+class TestShortOfMemory:
+    """What a server unloads other models by (memory_check.short_gb)."""
+
+    def test_on_apple_silicon_it_is_free_memory(self, mac, monkeypatch):
+        monkeypatch.setattr(memory_check, "free_gb", lambda: 40.0)
+        assert memory_check.short_gb("qwen-image-2.1-mlx", QWEN) == 6.0
+        assert memory_check.short_gb("qwen-image-2.1-mlx", QWEN, held_gb=10.0) == 0.0
+        monkeypatch.setenv(memory_check.SKIP_ENV, "1")      # a refusal is skipped, room is still made
+        assert memory_check.short_gb("qwen-image-2.1-mlx", QWEN) == 6.0
+
+    def test_on_nvidia_it_is_free_gpu_memory_with_what_pytorch_keeps_cached(self, monkeypatch):
+        import sys
+        import types
+        cuda = types.SimpleNamespace(is_available=lambda: True, mem_get_info=lambda: (8e9, 24e9),
+                                     memory_reserved=lambda: 6e9, memory_allocated=lambda: 4e9)
+        monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(cuda=cuda))
+        monkeypatch.setattr(memory_check, "unified_memory", lambda: False)
+        monkeypatch.setattr(memory_check, "need_for", lambda name, info: (16.0, "test"))
+        assert memory_check.room_gb() == 10.0 and memory_check.short_gb("flux", {}) == 6.0
+
+    def test_no_telling_is_never_short(self, mac, monkeypatch):
+        monkeypatch.setattr(memory_check, "free_gb", lambda: None)
+        assert memory_check.short_gb("qwen-image-2.1-mlx", QWEN) == 0.0
+        monkeypatch.setattr(memory_check, "free_gb", lambda: 1.0)
+        assert memory_check.short_gb("my-own-model", {}) == 0.0
+
+
+class TestOwnShare:
+    """A process holding several models counts all of them in its peak; each
+    records its own share (memory_record.Meter)."""
+
+    @pytest.fixture
+    def backend(self, monkeypatch, tmp_path):
+        from ollamadiffuser.core.config.settings import settings
+        from ollamadiffuser.core.utils import memory_record
+        monkeypatch.setattr(settings, "config_dir", tmp_path)   # the records a job writes
+        state = {"in_use": 0, "peak": 0}
+        monkeypatch.setattr(memory_record, "in_use", lambda b: state["in_use"] if b else None)
+        monkeypatch.setattr(memory_record, "_reset_peak", lambda b: bool(b))
+        monkeypatch.setattr(memory_record, "_peak", lambda b: state["peak"] if b else None)
+        return state
+
+    def test_the_other_models_weights_are_not_this_ones(self, backend):
+        from ollamadiffuser.core.utils import memory_record
+        backend["in_use"] = 30e9                            # 20 of them another model's
+        with memory_record.Meter("mlx", held=10e9, others=20e9) as meter:
+            backend["peak"], backend["in_use"] = 38e9, 30e9
+        assert meter.peak_bytes == 18e9 and meter.held_after == 10e9
+
+    def test_weights_the_first_job_brings_in_are_held_after_it(self, backend):
+        from ollamadiffuser.core.utils import memory_record
+        backend["in_use"] = 20e9                            # the other model; this one loaded lazily
+        with memory_record.Meter("mlx", held=0, others=20e9) as meter:
+            backend["peak"], backend["in_use"] = 37e9, 32e9
+        assert meter.peak_bytes == 17e9 and meter.held_after == 12e9
+
+    def test_the_larger_share_is_kept_when_the_counts_drift(self, backend):
+        from ollamadiffuser.core.utils import memory_record
+        backend["in_use"] = 25e9                            # 5 more than the counts say
+        with memory_record.Meter("mlx", held=10e9, others=10e9) as meter:
+            backend["peak"] = 33e9
+        assert meter.peak_bytes == 23e9                     # 33 - 10, not 10 + (33 - 25)
+
+    def test_alone_it_is_the_peak_as_before(self, backend):
+        from ollamadiffuser.core.utils import memory_record
+        backend["in_use"] = 12e9
+        with memory_record.Meter("mlx", held=12e9) as meter:
+            backend["peak"] = 15e9
+        assert meter.peak_bytes == 15e9
+        with memory_record.Meter(None, held=None) as meter:
+            pass
+        assert meter.peak_bytes is None and meter.held_after is None
+
+    def test_an_engine_counts_what_its_load_and_jobs_leave_and_what_the_others_hold(self, backend):
+        from PIL import Image
+        from ollamadiffuser.core.config.settings import ModelConfig
+        from ollamadiffuser.core.inference import engine as engine_module
+        from ollamadiffuser.core.inference.base import InferenceStrategy
+
+        class Lazy(InferenceStrategy):
+            def load(self, model_config, device):
+                backend["in_use"] += 1e9        # what building the model allocates
+                self.device = device
+                return True
+
+            def generate(self, prompt, **kw):
+                backend["in_use"] += 9e9        # the weights, on first use
+                backend["peak"] = backend["in_use"] + 3e9
+                return Image.new("RGB", (8, 8))
+
+        with patch.object(engine_module, "_detect_device", return_value="mps"), \
+                patch.object(engine_module, "_get_strategy", side_effect=lambda kind: Lazy()):
+            from ollamadiffuser.core.utils import memory_record
+            first, second = engine_module.InferenceEngine(), engine_module.InferenceEngine()
+            assert first.load_model(ModelConfig(name="m1", path="org/m1", model_type="mlx"))
+            first.generate_image(prompt="p")
+            assert first.held_bytes == 10e9
+            assert second.load_model(ModelConfig(name="m2", path="org/m2", model_type="mlx"))
+            assert second.held_bytes == 1e9
+            seen, real = [], memory_record.Meter
+            with patch.object(memory_record, "Meter", side_effect=lambda *a, **kw: seen.append(kw) or real(*a, **kw)):
+                second.generate_image(prompt="p")
+            assert seen[0]["others"] == 10e9 and second.held_bytes == 10e9
+            assert memory_record.measured("m2")["peak_gb"] == 13.0   # 23 at the peak, 10 of it m1's
+            first.unload()
+            assert first.held_bytes is None and first not in engine_module._LOADED

@@ -3,7 +3,7 @@
 import json
 import sys
 import subprocess
-from typing import Optional
+from typing import Optional, Tuple
 
 import click
 from rich.console import Console
@@ -643,12 +643,15 @@ def ps(as_json: bool, host: Optional[str]):
         if not server["answering"]:
             model = "[red]not answering[/red]"
         elif server["loaded"]:
-            model = server["model"] or "?"
+            # Several when the server keeps more in memory; the current one first.
+            model = "\n".join(server.get("models") or [server["model"] or "?"])
         else:
             model = "[yellow](no model loaded)[/yellow]"
         loads = ""
         if server["answering"]:
             loads = "on demand" if server.get("on_demand") else "this model only"
+            if (server.get("max_loaded") or 1) > 1:
+                loads += f", keeps up to {server['max_loaded']}"
             if server.get("keep_alive_s") is not None:
                 loads += f", frees after {_duration(server['keep_alive_s'])} idle"
         table.add_row(str(server["port"]), model, str(server["type"] or ""),
@@ -702,32 +705,44 @@ def _keep_alive_option(value: Optional[str]) -> Optional[float]:
 @click.option('--port', '-p', default=None, type=int, help='Server port')
 @click.option('--keep-alive', default=None, metavar='DURATION',
               help='Unload a model after this long idle (90s, 10m, 1h; 0 = after each job). '
-                   'Default: keep it until another is asked for.')
-@click.option('--preload', default=None, metavar='MODEL', help='Load this model before taking requests.')
+                   'Default: keep it until another needs its place.')
+@click.option('--max-loaded', default=1, show_default=True, type=click.IntRange(min=1),
+              envvar='OLLAMADIFFUSER_MAX_LOADED_MODELS', metavar='N',
+              help='Keep up to N models in memory. A job for one of them starts without a load; '
+                   'the least recently used is unloaded when another needs its place or its '
+                   'memory. Jobs still run one at a time.')
+@click.option('--preload', multiple=True, metavar='MODEL',
+              help='Load this model before taking requests (repeat for more, up to --max-loaded).')
 @click.option('--force', is_flag=True, help='Preload even if free memory looks too low')
 def serve(host: Optional[str], port: Optional[int], keep_alive: Optional[str],
-          preload: Optional[str], force: bool):
+          max_loaded: int, preload: Tuple[str, ...], force: bool):
     """Start the API server; it loads the model each request names.
 
     \b
-    One server for every installed model, one in memory at a time: a request
-    naming another model swaps it in (the previous one is unloaded first, and
-    put back if the new one won't fit in free memory).
-      ollamadiffuser serve --port 8000 --keep-alive 10m
+    One server for every installed model: a request naming a model that is not
+    in memory loads it. With --max-loaded 1 (the default) it takes the place of
+    the one there, which is put back if the new one won't fit in free memory;
+    with more, the others stay until one is needed for room.
+      ollamadiffuser serve --port 8000 --keep-alive 10m --max-loaded 2
       ollamadiffuser generate "a fox" -m z-image-turbo-mlx   # goes to it
     """
     keep_alive_s = _keep_alive_option(keep_alive)
-    if preload:
-        if not model_manager.is_model_installed(preload):
-            rprint(f"[red]Model {preload} is not installed. Please run first: ollamadiffuser pull {preload}[/red]")
+    if len(preload) > max_loaded:
+        raise click.BadParameter(f"{len(preload)} models to preload, but --max-loaded is {max_loaded}",
+                                 param_hint="--preload")
+    model_manager.max_loaded = max_loaded
+    for name in preload:
+        if not model_manager.is_model_installed(name):
+            rprint(f"[red]Model {name} is not installed. Please run first: ollamadiffuser pull {name}[/red]")
             sys.exit(1)
-        rprint(f"[yellow]Loading {preload}...[/yellow]")
-        if not model_manager.load_model(preload, force=force):
-            rprint(f"[red]{model_manager.last_error or f'Failed to load model {preload}!'}[/red]")
+        rprint(f"[yellow]Loading {name}...[/yellow]")
+        if not model_manager.load_model(name, force=force):
+            rprint(f"[red]{model_manager.last_error or f'Failed to load model {name}!'}[/red]")
             sys.exit(1)
-    rprint("[blue]Starting OllamaDiffuser API server (models load on demand)...[/blue]")
+    kept = f", up to {max_loaded} in memory" if max_loaded > 1 else ""
+    rprint(f"[blue]Starting OllamaDiffuser API server (models load on demand{kept})...[/blue]")
     try:
-        run_server(host=host, port=port, keep_alive=keep_alive_s)
+        run_server(host=host, port=port, keep_alive=keep_alive_s, max_loaded=max_loaded)
     except KeyboardInterrupt:
         rprint("\n[yellow]Server stopped[/yellow]")
 

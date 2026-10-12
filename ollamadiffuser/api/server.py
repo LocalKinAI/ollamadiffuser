@@ -62,6 +62,10 @@ class LoadModelRequest(BaseModel):
     model_name: str
 
 
+class UnloadModelRequest(BaseModel):
+    model_name: Optional[str] = None  # None: every model in memory
+
+
 class LoadLoRARequest(BaseModel):
     lora_name: str
     repo_id: str
@@ -117,39 +121,61 @@ def parse_keep_alive(value: Optional[str]) -> Optional[float]:
 # --- App factory ---
 
 
-def create_app(pinned: Optional[str] = None, keep_alive: Optional[float] = None) -> FastAPI:
+def create_app(pinned: Optional[str] = None, keep_alive: Optional[float] = None,
+               max_loaded: int = 1) -> FastAPI:
     """Create FastAPI application.
 
     ``pinned``: the model a server started with `run MODEL` is for. It takes
     only that model, and reloads it after a keep-alive let it go. With none
     (`serve`), the server loads whichever model a request names — Ollama's
-    way: one server for every model, one model in memory at a time.
+    way: one server for every model.
+
+    ``max_loaded``: how many models such a server keeps in memory at once. A
+    request for one of them starts at once; one for another model loads it,
+    and the least recently used gives way when there are that many already or
+    when memory runs short (models/manager.py). Jobs still run one at a time:
+    on one GPU two at once take as long as one after the other, and need the
+    memory of both.
 
     ``keep_alive``: seconds a model may sit idle before it is unloaded to give
     its memory back; None keeps it until the server stops.
     """
+    model_manager.max_loaded = 1 if pinned else max(1, int(max_loaded))
 
     def _loaded() -> Optional[str]:
         return model_manager.current_model_name if model_manager.is_model_loaded() else None
 
-    def _touch() -> None:
-        app.state.last_used = time.monotonic()
+    def _touch(name: Optional[str] = None) -> None:
+        name = name or _loaded()
+        if name:
+            app.state.last_used[name] = time.monotonic()
+
+    def _idle_s(name: str, now: float) -> float:
+        return now - app.state.last_used.get(name, app.state.started)
+
+    def _forget(names) -> None:
+        for name in names:
+            app.state.last_used.pop(name, None)
 
     async def _switch_to(name: str) -> None:
-        """Load ``name`` in place of what is loaded. A load the memory check
-        refuses puts the previous model back rather than leave the server
-        empty. Call with the lock held."""
+        """Make ``name`` the current model: in memory already, or loaded now.
+        A load that is refused or fails leaves the models in memory as they
+        were (models/manager.py puts back what it unloaded for it). Call with
+        the lock held."""
         if not model_manager.is_model_installed(name):
             raise HTTPException(status_code=404, detail=(
                 f"Model {name} is not installed. Install it first: ollamadiffuser pull {name}"))
-        previous = _loaded()
-        logger.info(f"Loading {name}" + (f" in place of {previous}" if previous else ""))
+        before = list(model_manager.resident_models())
+        if name not in before:
+            logger.info(f"Loading {name}" + (f" beside {', '.join(before)}" if before else ""))
         if await asyncio.to_thread(model_manager.load_model, name):
-            _touch()
+            gone = [m for m in before if m not in model_manager.resident_models()]
+            if gone:
+                logger.info(f"Unloaded {', '.join(gone)} to make room for {name}")
+            _forget(gone)
+            _touch(name)
             return
         reason = getattr(model_manager, "last_error", None) or f"Failed to load model {name}"
-        if previous and previous != name:
-            await asyncio.to_thread(model_manager.load_model, previous, force=True)
         raise HTTPException(status_code=503, detail=reason)
 
     async def _engine_for(model: Optional[str]):
@@ -160,31 +186,40 @@ def create_app(pinned: Optional[str] = None, keep_alive: Optional[float] = None)
         if wanted is None:
             raise HTTPException(status_code=400, detail=(
                 "No model loaded. Name one in `model`; this server loads it."))
-        if wanted == loaded:
-            return model_manager.loaded_model
-        pinned_model = app.state.pinned
-        if pinned_model and wanted != pinned_model:
-            raise HTTPException(status_code=409, detail=(
-                f"This server runs {pinned_model} and takes only that model (it was started with "
-                f"`ollamadiffuser run {pinned_model}`). Leave `model` out, or send it to a server "
-                f"started with `ollamadiffuser serve`, which loads models on demand."))
-        await _switch_to(wanted)
+        if wanted != loaded:
+            pinned_model = app.state.pinned
+            if pinned_model and wanted != pinned_model:
+                raise HTTPException(status_code=409, detail=(
+                    f"This server runs {pinned_model} and takes only that model (it was started with "
+                    f"`ollamadiffuser run {pinned_model}`). Leave `model` out, or send it to a server "
+                    f"started with `ollamadiffuser serve`, which loads models on demand."))
+            await _switch_to(wanted)
+        # The others kept in memory give way when this job would not fit beside them.
+        gone = list(await asyncio.to_thread(model_manager.make_room, wanted))
+        if gone:
+            logger.info(f"Unloaded {', '.join(gone)} to make room for a job on {wanted}")
+            _forget(gone)
         return model_manager.loaded_model
 
     async def _expire() -> bool:
-        """Unload the model if it has sat idle past the keep-alive; True if it did."""
+        """Unload the models that have sat idle past the keep-alive; True if any went."""
         limit = app.state.keep_alive
-        if limit is None or not model_manager.is_model_loaded():
+        if limit is None:
             return False
-        if time.monotonic() - app.state.last_used < limit:
+
+        def idle() -> List[str]:
+            now = time.monotonic()
+            return [name for name in model_manager.resident_models() if _idle_s(name, now) >= limit]
+
+        if not idle():
             return False
         async with app.state.lock:  # never in the middle of a job
-            if not model_manager.is_model_loaded() or time.monotonic() - app.state.last_used < limit:
-                return False
-            name = _loaded()
-            await asyncio.to_thread(model_manager.unload_model)
-            logger.info(f"Unloaded {name}: idle for {limit:g} s (keep-alive)")
-            return True
+            gone = idle()
+            for name in gone:
+                await asyncio.to_thread(model_manager.unload_model, name=name)
+                logger.info(f"Unloaded {name}: idle for {limit:g} s (keep-alive)")
+            _forget(gone)
+            return bool(gone)
 
     async def _reap() -> None:
         interval = min(30.0, max(1.0, keep_alive / 4))
@@ -205,13 +240,23 @@ def create_app(pinned: Optional[str] = None, keep_alive: Optional[float] = None)
                 reaper.cancel()
 
     def _serving() -> Dict[str, Any]:
-        """How this server takes models, for /api/models/running and health."""
-        limit = app.state.keep_alive
-        left = None
-        if limit is not None and model_manager.is_model_loaded():
-            left = round(max(0.0, limit - (time.monotonic() - app.state.last_used)), 1)
+        """How this server takes models and what it holds, for
+        /api/models/running and health. ``models``: every model in memory,
+        the current one first."""
+        limit, now = app.state.keep_alive, time.monotonic()
+        models = []
+        for name in model_manager.resident_models():
+            engine = model_manager.engine_of(name)
+            info = (engine.get_model_info() or {}) if engine is not None else {}
+            held = model_manager.held_gb(name)
+            models.append({
+                "model": name, "type": info.get("type"), "device": info.get("device"),
+                "memory_gb": round(held, 1) if held is not None else None,
+                "unloads_in_s": None if limit is None else round(max(0.0, limit - _idle_s(name, now)), 1),
+            })
         return {"on_demand": app.state.pinned is None, "pinned": app.state.pinned,
-                "keep_alive_s": limit, "unloads_in_s": left}
+                "keep_alive_s": limit, "unloads_in_s": models[0]["unloads_in_s"] if models else None,
+                "max_loaded": model_manager.max_loaded, "models": models}
 
     app = FastAPI(
         title="OllamaDiffuser API",
@@ -222,7 +267,8 @@ def create_app(pinned: Optional[str] = None, keep_alive: Optional[float] = None)
     app.state.pinned = pinned
     app.state.keep_alive = keep_alive
     app.state.lock = asyncio.Lock()  # one job, load or unload at a time
-    app.state.last_used = time.monotonic()
+    app.state.started = time.monotonic()
+    app.state.last_used = {}  # model -> when a job last used it (time.monotonic)
     app.state.expire = _expire
 
     if settings.server.enable_cors:
@@ -314,10 +360,17 @@ def create_app(pinned: Optional[str] = None, keep_alive: Optional[float] = None)
         return {"message": f"Model {request.model_name} loaded successfully"}
 
     @app.post("/api/models/unload")
-    async def unload_model():
+    async def unload_model(request: Optional[UnloadModelRequest] = None):
+        """Unload ``model_name``, or every model in memory when none is named."""
+        name = request.model_name if request else None
         async with app.state.lock:
-            model_manager.unload_model()
-        return {"message": "Model unloaded"}
+            gone = list(model_manager.resident_models()) if name is None else [name]
+            if name is None:
+                model_manager.unload_model()
+            else:
+                model_manager.unload_model(name=name)
+            _forget(gone)
+        return {"message": f"Model {name} unloaded" if name else "Model unloaded"}
 
     @app.delete("/api/models/{model_name}")
     async def remove_model(model_name: str):
@@ -789,13 +842,15 @@ def create_app(pinned: Optional[str] = None, keep_alive: Optional[float] = None)
 
 
 def run_server(host: str = None, port: int = None, pinned: Optional[str] = None,
-               keep_alive: Optional[float] = None):
-    """Start the API server. ``pinned`` and ``keep_alive``: see create_app."""
+               keep_alive: Optional[float] = None, max_loaded: int = 1):
+    """Start the API server. ``pinned``, ``keep_alive`` and ``max_loaded``: see create_app."""
     host = host or settings.server.host
     port = port or settings.server.port
 
-    app = create_app(pinned=pinned, keep_alive=keep_alive)
+    app = create_app(pinned=pinned, keep_alive=keep_alive, max_loaded=max_loaded)
     how = f"for {pinned}" if pinned else "loading models on demand"
+    if not pinned and max_loaded > 1:
+        how += f", up to {max_loaded} in memory"
     if keep_alive is not None:
         how += f", unloading after {keep_alive:g} s idle"
     logger.info(f"Starting server: http://{host}:{port} ({how})")

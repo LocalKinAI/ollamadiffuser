@@ -288,55 +288,6 @@ class TestNoiseGuard:
         assert InferenceStrategy.looks_like_noise(NotAnImage()) is False
 
 
-class _Manager:
-    """Enough of ModelManager for the server: one model loaded at a time,
-    "big" refused by the memory check (after unloading, as the real one does)."""
-
-    def __init__(self, loaded="a", installed=("a", "b", "big")):
-        self.installed, self.engines, self.loads, self.unloads = set(installed), {}, [], 0
-        self.last_error = None
-        self.current_model_name = loaded
-        self.loaded_model = self._engine(loaded) if loaded else None
-
-    def _engine(self, name):
-        if name not in self.engines:
-            engine = MagicMock(name=f"engine-{name}")
-            engine.generate_image.return_value = Image.new("RGB", (8, 8))
-            engine.get_model_info.return_value = {"type": "mlx", "device": "mps"}
-            engine.is_controlnet_pipeline = False
-            self.engines[name] = engine
-        return self.engines[name]
-
-    def is_model_loaded(self):
-        return self.current_model_name is not None
-
-    def get_current_model(self):
-        return self.current_model_name
-
-    def is_model_installed(self, name):
-        return name in self.installed
-
-    def load_model(self, name, force=False, persist=True):
-        self.loads.append((name, force))
-        self.unload_model()
-        if name == "big" and not force:
-            self.last_error = "big needs about 60 GB of memory (the registry's estimate) and 30.0 GB is free."
-            return False
-        self.current_model_name, self.loaded_model = name, self._engine(name)
-        return True
-
-    def unload_model(self, persist=True):
-        if self.current_model_name is not None:
-            self.unloads += 1
-        self.current_model_name, self.loaded_model = None, None
-
-    def list_available_models(self):
-        return sorted(self.installed)
-
-    def list_installed_models(self):
-        return sorted(self.installed)
-
-
 def _serving(manager, **kwargs):
     from ollamadiffuser.api.server import create_app
     from fastapi.testclient import TestClient
@@ -346,82 +297,195 @@ def _serving(manager, **kwargs):
 
 
 @pytest.fixture
-def on_demand():
-    manager = _Manager()
-    for client, app in _serving(manager):
-        yield client, manager, app
+def on_demand(box):
+    """`serve` with "a" loaded, one model in memory at a time."""
+    assert box.manager.load_model("a")
+    for client, app in _serving(box.manager):
+        yield client, box, app
 
 
 @pytest.fixture
-def for_a():
-    manager = _Manager()
-    for client, app in _serving(manager, pinned="a"):
-        yield client, manager, app
+def for_a(box):
+    assert box.manager.load_model("a")
+    for client, app in _serving(box.manager, pinned="a"):
+        yield client, box, app
 
 
 class TestModelsOnDemand:
     """`serve`: one server for every installed model, one in memory at a time."""
 
     def test_a_request_naming_another_model_swaps_it_in(self, on_demand):
-        tc, mm, _ = on_demand
+        tc, box, _ = on_demand
         resp = tc.post("/api/generate", json={"prompt": "p", "model": "b"})
         assert resp.status_code == 200, resp.text
-        assert mm.current_model_name == "b" and mm.engines["b"].generate_image.called
-        assert not mm.engines["a"].generate_image.called
+        assert box.manager.resident_models() == ["b"] and box.unloads() == ["a"]
+        assert box.live["b"].generate_image.called
 
     def test_no_model_named_uses_the_one_loaded(self, on_demand):
-        tc, mm, _ = on_demand
+        tc, box, _ = on_demand
         assert tc.post("/api/generate", json={"prompt": "p"}).status_code == 200
-        assert mm.loads == [] and mm.engines["a"].generate_image.called
+        assert box.loads() == ["a"] and box.live["a"].generate_image.called
 
     def test_forms_name_the_model_too(self, on_demand):
-        tc, mm, _ = on_demand
+        tc, box, _ = on_demand
         resp = tc.post("/api/generate/img2img", data={"prompt": "p", "model": "b"},
                        files={"image": ("a.png", TestImg2ImgEndpoint._png("red"), "image/png")})
         assert resp.status_code == 200, resp.text
-        assert mm.current_model_name == "b"
+        assert box.manager.current_model_name == "b"
 
     def test_a_model_not_installed_is_404(self, on_demand):
-        tc, mm, _ = on_demand
+        tc, box, _ = on_demand
         resp = tc.post("/api/generate", json={"prompt": "p", "model": "nope"})
         assert resp.status_code == 404 and "ollamadiffuser pull nope" in resp.json()["detail"]
-        assert mm.current_model_name == "a"
+        assert box.manager.current_model_name == "a"
 
-    def test_a_swap_that_wont_fit_puts_the_previous_model_back(self, on_demand):
-        tc, mm, _ = on_demand
+    def test_a_model_that_cannot_fit_is_refused_and_the_one_loaded_stays(self, on_demand):
+        """Not even with "a" unloaded: refused before anything is unloaded."""
+        tc, box, _ = on_demand
+        box.other_use = 30.0                       # 56 GB free, 66 with "a" gone; "big" needs 70
         resp = tc.post("/api/generate", json={"prompt": "p", "model": "big"})
-        assert resp.status_code == 503 and "needs about 60 GB" in resp.json()["detail"]
-        assert mm.loads == [("big", False), ("a", True)] and mm.current_model_name == "a"
+        assert resp.status_code == 503 and "needs about 70 GB" in resp.json()["detail"]
+        assert "66.0 GB with the other models loaded here unloaded" in resp.json()["detail"]
+        assert box.manager.current_model_name == "a" and box.unloads() == []
 
-    def test_nothing_loaded_and_nothing_named_says_to_name_one(self):
-        for tc, _ in _serving(_Manager(loaded=None)):
+    def test_a_swap_that_wont_fit_puts_the_previous_model_back(self, box):
+        """What "a" holds is not known here, so it goes before the check can tell."""
+        box.models["a"]["counted"] = False
+        box.other_use = 30.0
+        assert box.manager.load_model("a")
+        for tc, _ in _serving(box.manager):
+            resp = tc.post("/api/generate", json={"prompt": "p", "model": "big"})
+            assert resp.status_code == 503 and "needs about 70 GB" in resp.json()["detail"]
+            assert box.events == [("load", "a"), ("unload", "a"), ("load", "a")]
+            assert box.manager.current_model_name == "a"
+
+    def test_nothing_loaded_and_nothing_named_says_to_name_one(self, box):
+        for tc, _ in _serving(box.manager):
             resp = tc.post("/api/generate", json={"prompt": "p"})
             assert resp.status_code == 400 and "No model loaded" in resp.json()["detail"]
 
-    def test_running_says_how_the_server_takes_models(self):
-        for tc, _ in _serving(_Manager(), keep_alive=600.0):
+    def test_running_says_how_the_server_takes_models(self, box):
+        assert box.manager.load_model("a")
+        for tc, _ in _serving(box.manager, keep_alive=600.0):
             data = tc.get("/api/models/running").json()
-            assert data["on_demand"] is True and data["pinned"] is None
+            assert data["on_demand"] is True and data["pinned"] is None and data["max_loaded"] == 1
             assert data["keep_alive_s"] == 600.0 and 590 < data["unloads_in_s"] <= 600
-        for tc, _ in _serving(_Manager(), pinned="a"):
+            (only,) = data["models"]
+            assert only["model"] == "a" and only["memory_gb"] == 10.0 and only["type"] == "mlx"
+        for tc, _ in _serving(box.manager, pinned="a"):
             data = tc.get("/api/models/running").json()
             assert data["on_demand"] is False and data["pinned"] == "a" and data["keep_alive_s"] is None
 
     def test_explicit_load_still_answers_400_when_refused(self, on_demand):
-        tc, mm, _ = on_demand
+        tc, box, _ = on_demand
+        box.other_use = 30.0
         resp = tc.post("/api/models/load", json={"model_name": "big"})
-        assert resp.status_code == 400 and "needs about 60 GB" in resp.json()["detail"]
-        assert mm.current_model_name == "a"
+        assert resp.status_code == 400 and "needs about 70 GB" in resp.json()["detail"]
+        assert box.manager.current_model_name == "a"
+
+
+@pytest.fixture
+def two_kept(box):
+    """`serve --max-loaded 2` with "a" loaded."""
+    for client, app in _serving(box.manager, max_loaded=2):
+        assert box.manager.load_model("a")
+        yield client, box, app
+
+
+class TestSeveralModelsInMemory:
+    """`serve --max-loaded N`: the models stay in memory until one needs the
+    place or the memory; jobs still run one at a time."""
+
+    def test_another_model_loads_beside_and_the_first_needs_no_load_again(self, two_kept):
+        tc, box, _ = two_kept
+        assert tc.post("/api/generate", json={"prompt": "p", "model": "b"}).status_code == 200
+        assert tc.post("/api/generate", json={"prompt": "p", "model": "a"}).status_code == 200
+        assert box.loads() == ["a", "b"] and box.unloads() == []
+        assert box.manager.resident_models() == ["a", "b"]
+        assert box.live["a"].generate_image.call_count == 1 and box.live["b"].generate_image.call_count == 1
+
+    def test_past_the_count_the_least_recently_used_goes(self, two_kept):
+        tc, box, _ = two_kept
+        for model in ("b", "a", "c"):   # "b" was used before "a"
+            assert tc.post("/api/generate", json={"prompt": "p", "model": model}).status_code == 200
+        assert box.unloads() == ["b"] and box.manager.resident_models() == ["c", "a"]
+
+    def test_short_of_memory_the_least_recently_used_goes_before_the_count_says(self, box):
+        for tc, _ in _serving(box.manager, max_loaded=3):
+            for model in ("a", "b"):
+                assert tc.post("/api/generate", json={"prompt": "p", "model": model}).status_code == 200
+            box.other_use = 66.0                   # 10 GB free; "c" needs 25 — "a" going makes 20, "b" too 30
+            assert tc.post("/api/generate", json={"prompt": "p", "model": "c"}).status_code == 200
+            assert box.unloads() == ["a", "b"] and box.manager.resident_models() == ["c"]
+
+    def test_one_that_cannot_fit_however_many_go_unloads_none(self, two_kept):
+        tc, box, _ = two_kept
+        assert tc.post("/api/generate", json={"prompt": "p", "model": "b"}).status_code == 200
+        box.models["big"]["needs"] = 80
+        box.other_use = 20.0                       # 56 GB free, 76 with both gone
+        resp = tc.post("/api/generate", json={"prompt": "p", "model": "big"})
+        assert resp.status_code == 503 and box.unloads() == []
+        assert box.manager.resident_models() == ["b", "a"]
+
+    def test_a_load_that_fails_puts_back_what_went_for_it(self, two_kept):
+        tc, box, _ = two_kept
+        assert tc.post("/api/generate", json={"prompt": "p", "model": "b"}).status_code == 200
+        box.models["c"]["fails"] = True
+        resp = tc.post("/api/generate", json={"prompt": "p", "model": "c"})
+        assert resp.status_code == 503 and "failed to load" in resp.json()["detail"]
+        assert box.unloads() == ["a"] and box.loads() == ["a", "b", "a"]
+        assert box.manager.resident_models() == ["b", "a"]   # as before, "b" current
+
+    def test_a_job_that_would_not_fit_beside_the_others_sends_them_away(self, two_kept):
+        """Loaded with room to spare, then the machine filled up: the job's
+        own working memory comes before keeping the other model."""
+        tc, box, _ = two_kept
+        assert tc.post("/api/generate", json={"prompt": "p", "model": "b"}).status_code == 200
+        box.other_use = 74.0                       # 2 GB free; a job on "b" needs 3 more than it holds
+        assert tc.post("/api/generate", json={"prompt": "p", "model": "b"}).status_code == 200
+        assert box.unloads() == ["a"] and box.manager.resident_models() == ["b"]
+
+    def test_running_lists_every_model_the_current_one_first(self, two_kept):
+        tc, box, _ = two_kept
+        tc.post("/api/generate", json={"prompt": "p", "model": "b"})
+        data = tc.get("/api/models/running").json()
+        assert data["model"] == "b" and data["max_loaded"] == 2
+        assert [m["model"] for m in data["models"]] == ["b", "a"]
+        assert [m["memory_gb"] for m in data["models"]] == [10.0, 10.0]
+        assert tc.get("/api/health").json()["models"] == data["models"]
+
+    def test_unload_takes_one_model_or_all(self, two_kept):
+        tc, box, _ = two_kept
+        tc.post("/api/generate", json={"prompt": "p", "model": "b"})
+        assert tc.post("/api/models/unload", json={"model_name": "b"}).status_code == 200
+        assert box.manager.resident_models() == ["a"]
+        assert tc.post("/api/models/unload").status_code == 200
+        assert box.manager.resident_models() == []
+
+    def test_each_model_has_its_own_keep_alive(self, box):
+        import asyncio
+        import time
+        for tc, app in _serving(box.manager, max_loaded=2, keep_alive=60.0):
+            for model in ("a", "b"):
+                assert tc.post("/api/generate", json={"prompt": "p", "model": model}).status_code == 200
+            app.state.last_used["a"] = time.monotonic() - 61
+            assert asyncio.run(app.state.expire()) is True
+            assert box.unloads() == ["a"] and box.manager.resident_models() == ["b"]
+            assert asyncio.run(app.state.expire()) is False
+
+    def test_a_server_for_one_model_keeps_one(self, box):
+        for _ in _serving(box.manager, pinned="a", max_loaded=3):
+            assert box.manager.max_loaded == 1
 
 
 class TestServerForOneModel:
     """`run MODEL`: that model only, as before."""
 
     def test_another_model_is_refused_and_says_where_to_go(self, for_a):
-        tc, mm, _ = for_a
+        tc, box, _ = for_a
         resp = tc.post("/api/generate", json={"prompt": "p", "model": "b"})
         assert resp.status_code == 409 and "ollamadiffuser serve" in resp.json()["detail"]
-        assert mm.current_model_name == "a" and mm.loads == []
+        assert box.manager.current_model_name == "a" and box.loads() == ["a"]
         assert tc.post("/api/generate", json={"prompt": "p", "model": "a"}).status_code == 200
 
     def test_the_refusal_survives_the_video_endpoints_own_error_handling(self, for_a):
@@ -429,32 +493,38 @@ class TestServerForOneModel:
         resp = tc.post("/api/generate/video", data={"prompt": "p", "model": "b"})
         assert resp.status_code == 409
 
-    def test_its_model_comes_back_after_a_keep_alive_let_it_go(self):
-        manager = _Manager(loaded=None)
-        for tc, _ in _serving(manager, pinned="a", keep_alive=60.0):
+    def test_its_model_comes_back_after_a_keep_alive_let_it_go(self, box):
+        for tc, _ in _serving(box.manager, pinned="a", keep_alive=60.0):
             assert tc.post("/api/generate", json={"prompt": "p"}).status_code == 200
-            assert manager.loads == [("a", False)] and manager.current_model_name == "a"
+            assert box.loads() == ["a"] and box.manager.current_model_name == "a"
 
 
 class TestKeepAlive:
-    def test_an_idle_model_is_unloaded_and_a_busy_one_kept(self):
+    def test_an_idle_model_is_unloaded_and_a_busy_one_kept(self, box):
         import asyncio
         import time
-        manager = _Manager()
-        for _, app in _serving(manager, keep_alive=60.0):
-            app.state.last_used = time.monotonic() - 30
-            assert asyncio.run(app.state.expire()) is False and manager.unloads == 0
-            app.state.last_used = time.monotonic() - 61
-            assert asyncio.run(app.state.expire()) is True and manager.unloads == 1
-            assert manager.current_model_name is None
+        assert box.manager.load_model("a")
+        for _, app in _serving(box.manager, keep_alive=60.0):
+            app.state.last_used["a"] = time.monotonic() - 30
+            assert asyncio.run(app.state.expire()) is False and box.unloads() == []
+            app.state.last_used["a"] = time.monotonic() - 61
+            assert asyncio.run(app.state.expire()) is True and box.unloads() == ["a"]
+            assert box.manager.current_model_name is None
 
-    def test_without_keep_alive_nothing_is_unloaded(self):
+    def test_a_model_loaded_before_the_server_counts_from_its_start(self, box):
+        import asyncio
+        assert box.manager.load_model("a")
+        for _, app in _serving(box.manager, keep_alive=60.0):
+            app.state.started -= 61
+            assert asyncio.run(app.state.expire()) is True and box.unloads() == ["a"]
+
+    def test_without_keep_alive_nothing_is_unloaded(self, box):
         import asyncio
         import time
-        manager = _Manager()
-        for _, app in _serving(manager):
-            app.state.last_used = time.monotonic() - 86400
-            assert asyncio.run(app.state.expire()) is False and manager.unloads == 0
+        assert box.manager.load_model("a")
+        for _, app in _serving(box.manager):
+            app.state.last_used["a"] = time.monotonic() - 86400
+            assert asyncio.run(app.state.expire()) is False and box.unloads() == []
 
     def test_durations(self):
         from ollamadiffuser.api.server import parse_keep_alive
@@ -477,7 +547,27 @@ class TestServeAndRunOptions:
                             lambda name, force=False, persist=True: loaded.append((name, force)) or True)
         result = CliRunner().invoke(model_commands.serve, ["--keep-alive", "10m", "--preload", "a", "-p", "8010"])
         assert result.exit_code == 0, result.output
-        assert loaded == [("a", False)] and started == {"host": None, "port": 8010, "keep_alive": 600.0}
+        assert loaded == [("a", False)]
+        assert started == {"host": None, "port": 8010, "keep_alive": 600.0, "max_loaded": 1}
+
+    def test_serve_keeps_several_and_preloads_them(self, monkeypatch):
+        from click.testing import CliRunner
+        from ollamadiffuser.cli import model_commands
+        started, loaded = {}, []
+        monkeypatch.setattr(model_commands, "run_server", lambda **kw: started.update(kw))
+        monkeypatch.setattr(model_commands.model_manager, "is_model_installed", lambda name: True)
+        monkeypatch.setattr(model_commands.model_manager, "load_model",
+                            lambda name, force=False, persist=True: loaded.append(
+                                (name, model_commands.model_manager.max_loaded)) or True)
+        monkeypatch.setattr(model_commands.model_manager, "max_loaded", 1)
+        result = CliRunner().invoke(model_commands.serve, ["--max-loaded", "2", "--preload", "a", "--preload", "b"])
+        assert result.exit_code == 0, result.output
+        assert loaded == [("a", 2), ("b", 2)] and started["max_loaded"] == 2
+        result = CliRunner().invoke(model_commands.serve, ["--preload", "a", "--preload", "b"])
+        assert result.exit_code != 0 and "--max-loaded is 1" in result.output
+        result = CliRunner().invoke(model_commands.serve, [], env={"OLLAMADIFFUSER_MAX_LOADED_MODELS": "3"})
+        assert result.exit_code == 0, result.output
+        assert started["max_loaded"] == 3
 
     def test_run_pins_its_model(self, monkeypatch):
         from click.testing import CliRunner

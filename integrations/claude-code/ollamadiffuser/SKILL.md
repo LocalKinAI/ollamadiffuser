@@ -30,9 +30,9 @@ Read the error: it says what to do (install a model, free memory, name a model).
 
 ## Before a job
 
-1. `ollamadiffuser ps --json` lists the servers already running and the model each holds. A job
-   for one of those models goes to that server: no load, no second copy in memory. Do not stop
-   servers you did not start.
+1. `ollamadiffuser ps --json` lists the servers already running and the models each holds
+   (`models`). A job for one of those models goes to that server: no load, no second copy in
+   memory. Do not stop servers you did not start.
 2. `ollamadiffuser list --json` lists installed models with `type`, `min_memory_gb` and `notes`.
    `ollamadiffuser registry list --format json` lists everything that can be installed.
 3. A model that is not installed: `ollamadiffuser pull MODEL`. Downloads run to tens of GB, so
@@ -82,6 +82,10 @@ ollamadiffuser serve --port 8010 --keep-alive 10m > /tmp/ollamadiffuser-8010.log
 # then run jobs as above: a job for any installed model goes to it and it swaps that model in
 ollamadiffuser stop --port 8010   # when done; or let --keep-alive free the memory when idle
 ```
+
+For jobs that go back and forth between models (draw with one, edit with another), add
+`--max-loaded 2`: both stay in memory, so neither reloads. Jobs still run one at a time. The
+least recently used model is unloaded when a third is needed or memory runs short.
 
 `ollamadiffuser run MODEL` instead starts a server for that one model.
 

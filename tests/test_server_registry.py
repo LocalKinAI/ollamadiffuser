@@ -152,3 +152,28 @@ def test_discover_says_which_servers_load_on_demand(home, monkeypatch):
     monkeypatch.setattr(server_registry, "ask", lambda host, port, timeout=2.0: answers.get(port))
     (only,) = server_registry.discover()
     assert only["on_demand"] is True and only["keep_alive_s"] == 600.0 and only["model"] is None
+
+
+def test_discover_lists_every_model_a_server_keeps(home, monkeypatch):
+    answers = {
+        8000: {"loaded": True, "model": "b", "info": {"type": "mlx", "device": "mps"}, "on_demand": True,
+               "max_loaded": 2, "models": [{"model": "b", "memory_gb": 9.8}, {"model": "a", "memory_gb": 12.1}]},
+        8001: _answer("older-one"),                       # a version that says only what it holds
+    }
+    monkeypatch.setattr(server_registry, "ask", lambda host, port, timeout=2.0: answers.get(port))
+    found = {s["port"]: s for s in server_registry.discover()}
+    assert found[8000]["models"] == ["b", "a"] and found[8000]["max_loaded"] == 2
+    assert found[8001]["models"] == ["older-one"] and found[8001]["max_loaded"] == 1
+
+
+def test_ps_shows_every_model_a_server_keeps(home, monkeypatch):
+    from ollamadiffuser.cli import model_commands
+    answer = {"loaded": True, "model": "b", "info": {"type": "mlx", "device": "mps"}, "on_demand": True,
+              "max_loaded": 2, "models": [{"model": "b"}, {"model": "a"}]}
+    monkeypatch.setattr(server_registry, "ask", lambda host, port, timeout=2.0: answer if port == 8000 else None)
+    result = CliRunner().invoke(model_commands.ps, [], terminal_width=200)
+    assert result.exit_code == 0, result.output
+    assert "on demand, keeps up to 2" in result.output
+    lines = result.output.splitlines()
+    first = next(i for i, line in enumerate(lines) if " b " in line)
+    assert " a " in lines[first + 1]                      # the second model, under the first

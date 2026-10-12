@@ -1,7 +1,7 @@
 """Which OllamaDiffuser servers are running on this machine.
 
-Every ``ollamadiffuser run`` / ``serve`` is its own process holding one model,
-and several can run at once — an image model on one port, a video model on
+Every ``ollamadiffuser run`` / ``serve`` is its own process holding a model
+(``serve --max-loaded`` several), and several can run at once — an image model on one port, a video model on
 another. ``ps`` used to read a single "current model" field that each ``run``
 overwrote, and to ask only the default port, so it showed whichever started
 last. Each server now leaves a small file under ``~/.ollamadiffuser/servers/``
@@ -112,7 +112,8 @@ def discover(ports: Iterable[int] = USUAL_PORTS, timeout: float = 1.0,
     version, or with another config directory — an agent's sandbox — leaves
     no record here but still answers. Each entry has ``port``, ``host``,
     ``url``, ``pid`` (None when found by probing), ``answering``, ``loaded``,
-    ``model``, ``type`` and ``device``.
+    ``model`` (the current one), ``models`` (all it holds), ``type``,
+    ``device``, ``on_demand``, ``max_loaded`` and ``keep_alive_s``.
 
     ``host`` looks at another machine instead: its usual ports only, since
     the records are this machine's. Only servers started with ``--host
@@ -140,6 +141,11 @@ def discover(ports: Iterable[int] = USUAL_PORTS, timeout: float = 1.0,
         loaded = bool(answer and answer.get("loaded"))
         info = (answer or {}).get("info") or {}
         url_host = "127.0.0.1" if where in ("0.0.0.0", "", None) else where
+        model = ((answer or {}).get("model") or info.get("name")) if loaded else None
+        # Every model in memory, the current one first: a `serve --max-loaded`
+        # server keeps several; an older one says only which it holds.
+        models = [m["model"] for m in (answer or {}).get("models") or []
+                  if isinstance(m, dict) and m.get("model")] if loaded else []
         found.append({
             "port": port,
             "host": where,
@@ -147,11 +153,13 @@ def discover(ports: Iterable[int] = USUAL_PORTS, timeout: float = 1.0,
             "pid": record.get("pid") if record else None,
             "answering": answer is not None,
             "loaded": loaded,
-            "model": ((answer or {}).get("model") or info.get("name")) if loaded else None,
+            "model": model,
+            "models": models or ([model] if model else []),
             "type": info.get("type") if loaded else None,
             "device": info.get("device") if loaded else None,
             # A server started with `serve` loads whichever model a request names.
             "on_demand": bool(answer and answer.get("on_demand")),
+            "max_loaded": (answer or {}).get("max_loaded") or 1,
             "keep_alive_s": (answer or {}).get("keep_alive_s"),
         })
     return found

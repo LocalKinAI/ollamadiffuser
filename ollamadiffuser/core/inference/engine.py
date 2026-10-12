@@ -6,7 +6,9 @@ Each model type (SD1.5, SDXL, FLUX, SD3, ControlNet, Video, HiDream, GGUF)
 has its own strategy class that handles loading and generation.
 """
 
+import contextlib
 import logging
+import weakref
 from typing import Any, Dict, Optional, Union
 
 from PIL import Image
@@ -15,6 +17,10 @@ from ..config.settings import ModelConfig
 from .base import InferenceStrategy
 
 logger = logging.getLogger(__name__)
+
+# The engines with a model loaded in this process — several when a server
+# keeps more than one model in memory — for what each one holds (held_bytes).
+_LOADED: "weakref.WeakSet[InferenceEngine]" = weakref.WeakSet()
 
 
 def _get_strategy(model_type: str) -> InferenceStrategy:
@@ -62,6 +68,17 @@ def _get_strategy(model_type: str) -> InferenceStrategy:
         raise ValueError(f"Unsupported model type: {model_type}")
 
 
+def _backend(model_type: Optional[str], device: Optional[str]) -> Optional[str]:
+    """Where a model's memory is counted (see InferenceEngine._memory_backend)."""
+    if model_type == "mlx":
+        return "mlx"
+    if model_type in ("ltx-video-mlx", "gguf"):
+        # Another process, or stable-diffusion.cpp's own allocations: PyTorch
+        # and MLX would count next to nothing.
+        return None
+    return device if device in ("cuda", "mps") else None
+
+
 def _detect_device() -> str:
     """Automatically detect the best available device."""
     import torch
@@ -92,6 +109,10 @@ class InferenceEngine:
         self._strategy: Optional[InferenceStrategy] = None
         self.model_config: Optional[ModelConfig] = None
         self.device: Optional[str] = None
+        # The memory this model holds while it stays loaded, by the backend's
+        # count of what its load and its jobs left behind — what unloading it
+        # gives back. None when there is no telling.
+        self.held_bytes: Optional[int] = None
 
     # -- Backward-compatible properties --
 
@@ -134,10 +155,19 @@ class InferenceEngine:
             self.device = _detect_device()
             self._strategy = _get_strategy(model_type)
 
+            from ..utils import memory_record
+            backend = _backend(model_type, self.device)
+            before = memory_record.in_use(backend)
             if self._strategy.load(model_config, self.device):
                 self.model_config = model_config
                 # Update device in case strategy fell back to CPU
                 self.device = self._strategy.device
+                after = memory_record.in_use(backend)
+                if None not in (before, after):
+                    self.held_bytes = max(0, after - before)
+                elif model_type == "ltx-video-mlx":
+                    self.held_bytes = 0  # it renders in a process of its own, per job
+                _LOADED.add(self)
                 logger.info(f"Model {model_config.name} loaded successfully via {type(self._strategy).__name__}")
                 return True
 
@@ -198,9 +228,7 @@ class InferenceEngine:
             gen_kwargs["control_guidance_start"] = control_guidance_start
             gen_kwargs["control_guidance_end"] = control_guidance_end
 
-        from ..utils import memory_record
-
-        with memory_record.Meter(self._memory_backend()) as meter:
+        with self._metered() as meter:
             image = self._strategy.generate(
                 prompt=prompt,
                 negative_prompt=negative_prompt,
@@ -218,6 +246,7 @@ class InferenceEngine:
         if error:
             raise RuntimeError(error)
         # What it took, for the memory check the next time it loads.
+        from ..utils import memory_record
         memory_record.record(getattr(self.model_config, "name", None), meter.peak_bytes, width, height)
         return image
 
@@ -225,12 +254,38 @@ class InferenceEngine:
         """Where this model's memory is counted: MLX for mflux models, the
         PyTorch device for the rest; None for one that renders in another
         process (LTX-2 through the ltx-2-mlx CLI) or on the CPU."""
-        kind = getattr(self.model_config, "model_type", None)
-        if kind == "mlx":
-            return "mlx"
-        if kind == "ltx-video-mlx":
-            return None
-        return self.device if self.device in ("cuda", "mps") else None
+        return _backend(getattr(self.model_config, "model_type", None), self.device)
+
+    @contextlib.contextmanager
+    def _metered(self):
+        """Measure the work inside: this model's share of the peak, and what
+        it holds afterwards."""
+        from ..utils import memory_record
+
+        backend = self._memory_backend()
+        others = sum(e.held_bytes or 0 for e in list(_LOADED)
+                     if e is not self and e._memory_backend() == backend)
+        meter = memory_record.Meter(backend, held=self.held_bytes, others=others)
+        try:
+            with meter:
+                yield meter
+        finally:
+            self.held_bytes = meter.held_after
+
+    @contextlib.contextmanager
+    def _tracked(self):
+        """Keep held_bytes right across work that changes the weights (a LoRA
+        rebuilds an mflux model)."""
+        from ..utils import memory_record
+
+        backend = self._memory_backend()
+        before = memory_record.in_use(backend)
+        try:
+            yield
+        finally:
+            after = memory_record.in_use(backend)
+            if None not in (self.held_bytes, before, after):
+                self.held_bytes = max(0, self.held_bytes + after - before)
 
     def generate_video(
         self,
@@ -257,7 +312,7 @@ class InferenceEngine:
             )
         from ..utils import memory_record
 
-        with memory_record.Meter(self._memory_backend()) as meter:
+        with self._metered() as meter:
             path = self._strategy.generate_video(
                 prompt=prompt, output=output, seconds=seconds, **kwargs
             )
@@ -267,11 +322,13 @@ class InferenceEngine:
 
     def unload(self):
         """Unload the current model and free resources."""
+        _LOADED.discard(self)
         if self._strategy:
             self._strategy.unload()
             self._strategy = None
         self.model_config = None
         self.device = None
+        self.held_bytes = None
         logger.info("Engine unloaded")
 
     def is_loaded(self) -> bool:
@@ -294,10 +351,12 @@ class InferenceEngine:
         """Load LoRA weights at runtime."""
         if not self._strategy:
             raise RuntimeError("No model loaded")
-        return self._strategy.load_lora_runtime(repo_id, weight_name, scale)
+        with self._tracked():
+            return self._strategy.load_lora_runtime(repo_id, weight_name, scale)
 
     def unload_lora(self) -> bool:
         """Unload current LoRA weights."""
         if not self._strategy:
             return False
-        return self._strategy.unload_lora()
+        with self._tracked():
+            return self._strategy.unload_lora()

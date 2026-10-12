@@ -110,13 +110,12 @@ def run(job: Job, *, output: Optional[str] = None, output_dir: Optional[str] = N
             server = _the_running_server()
         elif job.model is not None and job.model != here:
             found = servers()
-            server = (next((s for s in found if s["loaded"] and s["model"] == job.model), None)
-                      or _on_demand(found))
+            server = next((s for s in found if _holds(s, job.model)), None) or _on_demand(found)
 
     if server:
         if job.lora and job.kind != "video":
             raise JobError(
-                f"{server['model']} is running at {server['url']} for everyone who calls it, "
+                f"{job.model or server['model']} is running at {server['url']} for everyone who calls it, "
                 f"and a LoRA there would change it for all of them. Load the LoRA on that server "
                 f"yourself (POST {server['url']}/api/lora/load) and call again without one, or stop "
                 f"that server first."
@@ -193,11 +192,26 @@ def _remote(url: str, model: Optional[str]) -> Dict:
     return {"url": url, "model": held, "loaded": True}
 
 
+def _held(server: Dict) -> List[str]:
+    """The models ``server`` has in memory (several for `serve --max-loaded`)."""
+    if not server.get("loaded"):
+        return []
+    return server.get("models") or ([server["model"]] if server.get("model") else [])
+
+
+def _holds(server: Dict, model: str) -> bool:
+    return model in _held(server)
+
+
 def _on_demand(found: List[Dict]) -> Optional[Dict]:
     """A server that loads models on demand, for a job whose model no server
-    holds: one with nothing loaded first, so nobody's model is swapped out."""
+    holds: one with room for another model first — nothing loaded, or fewer
+    than it keeps — so nobody's model is unloaded for it."""
     ready = [s for s in found if s.get("answering") and s.get("on_demand")]
-    return next((s for s in ready if not s["loaded"]), None) or (ready[0] if ready else None)
+    roomy = [s for s in ready if len(_held(s)) < (s.get("max_loaded") or 1)]
+    if roomy:
+        return min(roomy, key=lambda s: len(_held(s)))
+    return ready[0] if ready else None
 
 
 def _the_running_server() -> Dict:
