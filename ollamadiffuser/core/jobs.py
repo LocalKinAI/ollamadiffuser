@@ -10,6 +10,7 @@ process, runs, and lets it go. ``ollamadiffuser generate``, ``edit`` and
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import io
 import random
 import shutil
@@ -108,7 +109,9 @@ def run(job: Job, *, output: Optional[str] = None, output_dir: Optional[str] = N
         if job.model is None and here is None:
             server = _the_running_server()
         elif job.model is not None and job.model != here:
-            server = next((s for s in servers() if s["loaded"] and s["model"] == job.model), None)
+            found = servers()
+            server = (next((s for s in found if s["loaded"] and s["model"] == job.model), None)
+                      or _on_demand(found))
 
     if server:
         if job.lora and job.kind != "video":
@@ -118,8 +121,11 @@ def run(job: Job, *, output: Optional[str] = None, output_dir: Optional[str] = N
                 f"yourself (POST {server['url']}/api/lora/load) and call again without one, or stop "
                 f"that server first."
             )
-        _write(_over_http(server["url"], job, seed), target, job.kind)
-        model = server["model"]
+        # The model goes with the request: a `serve` server loads it, and one
+        # that holds it checks it is the one asked for.
+        sent = dataclasses.replace(job, model=job.model or server["model"])
+        _write(_over_http(server["url"], sent, seed), target, job.kind)
+        model = sent.model
     else:
         model = job.model or here
         # The MCP server runs tools in threads; one model loads and runs at a time.
@@ -136,11 +142,13 @@ def run(job: Job, *, output: Optional[str] = None, output_dir: Optional[str] = N
 
 
 def _remote(url: str, model: Optional[str]) -> Dict:
-    """The server at ``url``, holding ``model``.
+    """The server at ``url``, to run a job for ``model`` on.
 
-    One with no model loaded (`ollamadiffuser serve`) is waiting for one and
-    loads the model the job names. One holding another model is left alone:
-    others may be using it, and swapping it would cost them a reload.
+    A server that loads models on demand (`ollamadiffuser serve`) takes the
+    job whatever it holds: the request names the model and the server swaps
+    it in. One started for a model (`run`), or a version before on-demand
+    loading, holding another model is left alone: others may be using it.
+    Such a server with nothing loaded loads the model the job names.
     """
     import requests
 
@@ -160,6 +168,11 @@ def _remote(url: str, model: Optional[str]) -> Dict:
         raise JobError(f"Something answers at {url} (HTTP {response.status_code}), but it is not an "
                        f"OllamaDiffuser server. Check the address and the port.")
     held = answer.get("model") if answer.get("loaded") else None
+    if answer.get("on_demand"):
+        if not (model or held):
+            raise JobError(f"The server at {url} loads models on demand and holds none now; "
+                           f"name the model to use.")
+        return {"url": url, "model": model or held, "loaded": True, "on_demand": True}
     if model and held and held != model:
         raise JobError(f"The server at {url} runs {held}, not {model}. Leave the model out to use "
                        f"{held}, or point at a server that runs {model}.")
@@ -178,6 +191,13 @@ def _remote(url: str, model: Optional[str]) -> Dict:
             raise JobError(f"The server at {url} could not load {model}: {detail or response.status_code}")
         held = model
     return {"url": url, "model": held, "loaded": True}
+
+
+def _on_demand(found: List[Dict]) -> Optional[Dict]:
+    """A server that loads models on demand, for a job whose model no server
+    holds: one with nothing loaded first, so nobody's model is swapped out."""
+    ready = [s for s in found if s.get("answering") and s.get("on_demand")]
+    return next((s for s in ready if not s["loaded"]), None) or (ready[0] if ready else None)
 
 
 def _the_running_server() -> Dict:
@@ -232,14 +252,15 @@ def _over_http(url: str, job: Job, seed: int) -> bytes:
             body = {"prompt": job.prompt, "negative_prompt": job.negative_prompt,
                     "width": job.width or 1024, "height": job.height or 1024,
                     "steps": job.steps, "cfg_scale": job.guidance, "seed": seed,
-                    "scheduler": job.scheduler}
+                    "scheduler": job.scheduler, "model": job.model}
             response = requests.post(f"{url}/api/generate", json=_present(body), timeout=HTTP_TIMEOUT)
         else:
             if job.kind == "edit":
                 endpoint = "/api/generate/img2img"
                 fields = {"prompt": job.prompt, "negative_prompt": job.negative_prompt,
                           "num_inference_steps": job.steps, "guidance_scale": job.guidance,
-                          "seed": seed, "strength": job.strength, "scheduler": job.scheduler}
+                          "seed": seed, "strength": job.strength, "scheduler": job.scheduler,
+                          "model": job.model}
                 uploads = [("image", job.image)] + [("images", r) for r in job.references]
                 uploads += [("mask", job.mask)] if job.mask else []
             else:
@@ -247,7 +268,7 @@ def _over_http(url: str, job: Job, seed: int) -> bytes:
                 fields = {"prompt": job.prompt, "seconds": job.seconds, "frames": job.frames,
                           "width": job.width, "height": job.height, "seed": seed,
                           "steps": job.steps, "cfg_scale": job.guidance, "lora": job.lora,
-                          "lora_strength": job.lora_scale if job.lora else None}
+                          "lora_strength": job.lora_scale if job.lora else None, "model": job.model}
                 uploads = [(name, path) for name, path in
                            (("image", job.image), ("audio", job.audio), ("control", job.control)) if path]
             with contextlib.ExitStack() as stack:

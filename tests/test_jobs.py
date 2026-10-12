@@ -16,9 +16,10 @@ def _png(size=(8, 8), mode="RGB"):
     return buf.getvalue()
 
 
-def _server(model, port=8010):
+def _server(model, port=8010, on_demand=False):
     return {"port": port, "host": "127.0.0.1", "url": f"http://127.0.0.1:{port}", "pid": None,
-            "answering": True, "loaded": True, "model": model, "type": "mlx", "device": "mps"}
+            "answering": True, "loaded": model is not None, "model": model, "type": "mlx", "device": "mps",
+            "on_demand": on_demand, "keep_alive_s": None}
 
 
 @pytest.fixture
@@ -122,6 +123,53 @@ class TestWhereAJobRuns:
         running.append(_server("m"))
         result = jobs.run(Job("image", "p"), output_dir=str(tmp_path), manager=manager)
         assert isinstance(result["seed"], int) and posted[0][2] == result["seed"]
+
+
+class TestServersThatLoadOnDemand:
+    """A `serve` server takes a job for any model: the request names it and it swaps it in."""
+
+    def test_a_model_no_server_holds_goes_to_one_that_loads_on_demand(self, manager, running, posted, tmp_path):
+        running.extend([_server("x", 8010), _server("y", 8011, on_demand=True)])
+        result = jobs.run(Job("image", "p", model="z-image-turbo-mlx"), output_dir=str(tmp_path), manager=manager)
+        url, job, _ = posted[0]
+        assert url == "http://127.0.0.1:8011" and job.model == "z-image-turbo-mlx"
+        assert result["model"] == "z-image-turbo-mlx" and result["server"] == url
+        manager.load_model.assert_not_called()
+
+    def test_an_idle_one_is_preferred_so_nobodys_model_is_swapped_out(self, manager, running, posted, tmp_path):
+        running.extend([_server("y", 8011, on_demand=True), _server(None, 8012, on_demand=True)])
+        jobs.run(Job("image", "p", model="z"), output_dir=str(tmp_path), manager=manager)
+        assert posted[0][0] == "http://127.0.0.1:8012"
+
+    def test_the_model_goes_with_the_request_even_when_the_job_named_none(self, manager, running, posted, tmp_path):
+        running.append(_server("y", 8011))
+        jobs.run(Job("image", "p"), output_dir=str(tmp_path), manager=manager)
+        assert posted[0][1].model == "y"
+
+    def test_a_remote_one_takes_a_model_it_does_not_hold(self, manager, posted, monkeypatch, tmp_path):
+        class Running:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {"loaded": True, "model": "y", "on_demand": True}
+
+        monkeypatch.setattr("requests.get", lambda url, timeout=None: Running())
+        result = jobs.run(Job("image", "p", model="z"), output_dir=str(tmp_path), manager=manager,
+                          server="192.168.0.21:8000")
+        assert posted[0][1].model == "z" and result["model"] == "z"
+
+    def test_a_remote_one_holding_nothing_needs_a_model_name(self, manager, monkeypatch, tmp_path):
+        class Running:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {"loaded": False, "on_demand": True}
+
+        monkeypatch.setattr("requests.get", lambda url, timeout=None: Running())
+        with pytest.raises(JobError, match="loads models on demand"):
+            jobs.run(Job("image", "p"), output_dir=str(tmp_path), manager=manager, server="h:8000")
 
 
 class TestLoRA:

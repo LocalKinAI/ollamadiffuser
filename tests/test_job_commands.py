@@ -95,8 +95,9 @@ def test_the_commands_are_on_the_cli():
     assert {"generate", "edit", "video"} <= set(cli.commands)
 
 
-def test_list_json(monkeypatch):
+def test_list_json(monkeypatch, tmp_path):
     from ollamadiffuser.cli import model_commands
+    monkeypatch.setattr(model_commands.settings, "config_dir", tmp_path)  # no measured peaks
     monkeypatch.setattr(model_commands.model_manager, "list_installed_models", lambda: ["z-image-turbo-mlx"])
     monkeypatch.setattr(model_commands.model_manager, "get_model_info", lambda name: {
         "model_type": "mlx", "parameters": {"mlx_variant": "z_image"}, "local_path": "/m/z",
@@ -104,7 +105,8 @@ def test_list_json(monkeypatch):
     result = CliRunner().invoke(model_commands.list, ["--json"])
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout) == [{"name": "z-image-turbo-mlx", "type": "mlx", "mlx_variant": "z_image",
-                                          "min_memory_gb": 6, "size": "8 GB", "path": "/m/z", "notes": "fast"}]
+                                          "min_memory_gb": 6, "measured_peak_gb": None, "size": "8 GB",
+                                          "path": "/m/z", "notes": "fast"}]
 
 
 def test_run_passes_force_and_says_why_a_load_failed(monkeypatch):

@@ -3,7 +3,10 @@
 import asyncio
 import base64
 import io
+import re
 import tempfile
+import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 import logging
 from typing import Any, Dict, List, Optional
@@ -41,6 +44,9 @@ class GenerateRequest(BaseModel):
     # An mflux sampling schedule, for the models that take one — e.g.
     # "viggle_turbo" with Viggle's 6-step LoRA on Qwen-Image-2.1.
     scheduler: Optional[str] = None
+    # The model to use. A server started with `serve` loads it first if it
+    # holds another; one started for a model with `run` takes only that one.
+    model: Optional[str] = None
 
 
 class Img2ImgRequest(BaseModel):
@@ -93,16 +99,131 @@ def _get_engine():
     return model_manager.loaded_model
 
 
+def parse_keep_alive(value: Optional[str]) -> Optional[float]:
+    """``10m`` / ``1h`` / ``90s`` / ``90`` → seconds; ``forever`` (or nothing,
+    or a negative number) → None, never unload; ``0`` → right after each job."""
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    if text in ("", "forever", "never", "inf", "infinite"):
+        return None
+    match = re.fullmatch(r"(-?\d+(?:\.\d+)?)\s*([smh]?)", text)
+    if not match:
+        raise ValueError(f"not a duration: {value!r} (use 90s, 10m, 1h, 0 or forever)")
+    seconds = float(match.group(1)) * {"": 1, "s": 1, "m": 60, "h": 3600}[match.group(2)]
+    return None if seconds < 0 else seconds
+
+
 # --- App factory ---
 
 
-def create_app() -> FastAPI:
-    """Create FastAPI application"""
+def create_app(pinned: Optional[str] = None, keep_alive: Optional[float] = None) -> FastAPI:
+    """Create FastAPI application.
+
+    ``pinned``: the model a server started with `run MODEL` is for. It takes
+    only that model, and reloads it after a keep-alive let it go. With none
+    (`serve`), the server loads whichever model a request names — Ollama's
+    way: one server for every model, one model in memory at a time.
+
+    ``keep_alive``: seconds a model may sit idle before it is unloaded to give
+    its memory back; None keeps it until the server stops.
+    """
+
+    def _loaded() -> Optional[str]:
+        return model_manager.current_model_name if model_manager.is_model_loaded() else None
+
+    def _touch() -> None:
+        app.state.last_used = time.monotonic()
+
+    async def _switch_to(name: str) -> None:
+        """Load ``name`` in place of what is loaded. A load the memory check
+        refuses puts the previous model back rather than leave the server
+        empty. Call with the lock held."""
+        if not model_manager.is_model_installed(name):
+            raise HTTPException(status_code=404, detail=(
+                f"Model {name} is not installed. Install it first: ollamadiffuser pull {name}"))
+        previous = _loaded()
+        logger.info(f"Loading {name}" + (f" in place of {previous}" if previous else ""))
+        if await asyncio.to_thread(model_manager.load_model, name):
+            _touch()
+            return
+        reason = getattr(model_manager, "last_error", None) or f"Failed to load model {name}"
+        if previous and previous != name:
+            await asyncio.to_thread(model_manager.load_model, previous, force=True)
+        raise HTTPException(status_code=503, detail=reason)
+
+    async def _engine_for(model: Optional[str]):
+        """The engine for a request naming ``model`` (or none). Call with the
+        lock held: a load here may unload what another request was using."""
+        loaded = _loaded()
+        wanted = model or loaded or app.state.pinned
+        if wanted is None:
+            raise HTTPException(status_code=400, detail=(
+                "No model loaded. Name one in `model`; this server loads it."))
+        if wanted == loaded:
+            return model_manager.loaded_model
+        pinned_model = app.state.pinned
+        if pinned_model and wanted != pinned_model:
+            raise HTTPException(status_code=409, detail=(
+                f"This server runs {pinned_model} and takes only that model (it was started with "
+                f"`ollamadiffuser run {pinned_model}`). Leave `model` out, or send it to a server "
+                f"started with `ollamadiffuser serve`, which loads models on demand."))
+        await _switch_to(wanted)
+        return model_manager.loaded_model
+
+    async def _expire() -> bool:
+        """Unload the model if it has sat idle past the keep-alive; True if it did."""
+        limit = app.state.keep_alive
+        if limit is None or not model_manager.is_model_loaded():
+            return False
+        if time.monotonic() - app.state.last_used < limit:
+            return False
+        async with app.state.lock:  # never in the middle of a job
+            if not model_manager.is_model_loaded() or time.monotonic() - app.state.last_used < limit:
+                return False
+            name = _loaded()
+            await asyncio.to_thread(model_manager.unload_model)
+            logger.info(f"Unloaded {name}: idle for {limit:g} s (keep-alive)")
+            return True
+
+    async def _reap() -> None:
+        interval = min(30.0, max(1.0, keep_alive / 4))
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                await _expire()
+            except Exception as e:
+                logger.warning(f"Keep-alive check failed: {e}")
+
+    @asynccontextmanager
+    async def lifespan(app):
+        reaper = asyncio.create_task(_reap()) if keep_alive is not None else None
+        try:
+            yield
+        finally:
+            if reaper:
+                reaper.cancel()
+
+    def _serving() -> Dict[str, Any]:
+        """How this server takes models, for /api/models/running and health."""
+        limit = app.state.keep_alive
+        left = None
+        if limit is not None and model_manager.is_model_loaded():
+            left = round(max(0.0, limit - (time.monotonic() - app.state.last_used)), 1)
+        return {"on_demand": app.state.pinned is None, "pinned": app.state.pinned,
+                "keep_alive_s": limit, "unloads_in_s": left}
+
     app = FastAPI(
         title="OllamaDiffuser API",
         description="Image generation model management and inference API",
         version="2.0.0",
+        lifespan=lifespan,
     )
+    app.state.pinned = pinned
+    app.state.keep_alive = keep_alive
+    app.state.lock = asyncio.Lock()  # one job, load or unload at a time
+    app.state.last_used = time.monotonic()
+    app.state.expire = _expire
 
     if settings.server.enable_cors:
         app.add_middleware(
@@ -138,6 +259,7 @@ def create_app() -> FastAPI:
             "status": "healthy",
             "model_loaded": model_manager.is_model_loaded(),
             "current_model": model_manager.get_current_model(),
+            **_serving(),
         }
 
     # --- Model management ---
@@ -158,8 +280,9 @@ def create_app() -> FastAPI:
                 "model": model_manager.get_current_model(),
                 "info": engine.get_model_info(),
                 "loaded": True,
+                **_serving(),
             }
-        return {"loaded": False}
+        return {"loaded": False, **_serving()}
 
     @app.get("/api/models/{model_name}")
     async def get_model_info(model_name: str):
@@ -179,18 +302,21 @@ def create_app() -> FastAPI:
 
     @app.post("/api/models/load")
     async def load_model(request: LoadModelRequest):
-        success = await asyncio.to_thread(model_manager.load_model, request.model_name)
-        if success:
-            return {"message": f"Model {request.model_name} loaded successfully"}
-        raise HTTPException(
-            status_code=400,
-            detail=getattr(model_manager, "last_error", None)
-            or f"Failed to load model {request.model_name}",
-        )
+        async with app.state.lock:
+            if request.model_name != _loaded():
+                try:
+                    await _switch_to(request.model_name)
+                except HTTPException as e:
+                    raise HTTPException(status_code=400 if e.status_code == 503 else e.status_code,
+                                        detail=e.detail)
+            if app.state.pinned:
+                app.state.pinned = request.model_name  # whoever asked chose it
+        return {"message": f"Model {request.model_name} loaded successfully"}
 
     @app.post("/api/models/unload")
     async def unload_model():
-        model_manager.unload_model()
+        async with app.state.lock:
+            model_manager.unload_model()
         return {"message": "Model unloaded"}
 
     @app.delete("/api/models/{model_name}")
@@ -206,8 +332,6 @@ def create_app() -> FastAPI:
     @app.post("/api/generate")
     async def generate_image(request: GenerateRequest):
         """Generate image from text prompt"""
-        engine = _get_engine()
-
         steps = request.steps if request.steps is not None else request.num_inference_steps
         guidance = (
             request.cfg_scale
@@ -215,32 +339,36 @@ def create_app() -> FastAPI:
             else request.guidance_scale
         )
 
-        try:
-            image = await asyncio.to_thread(
-                engine.generate_image,
-                prompt=request.prompt,
-                negative_prompt=request.negative_prompt,
-                num_inference_steps=steps,
-                guidance_scale=guidance,
-                width=request.width,
-                height=request.height,
-                seed=request.seed,
-                **({"scheduler": request.scheduler} if request.scheduler else {}),
-            )
-            if request.response_format == "b64_json":
-                return _image_to_json_response(image)
-            return _image_to_response(image)
-        except ValueError as e:
-            # An input the model needs and did not get: the caller's to fix.
-            raise HTTPException(status_code=400, detail=str(e))
-        except RuntimeError as e:
-            # The model refused or returned something that is not a picture;
-            # its own sentence is the useful one.
-            logger.error(f"Generation failed: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
-        except Exception as e:
-            logger.error(f"Generation failed: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Image generation failed")
+        async with app.state.lock:
+            engine = await _engine_for(request.model)
+            try:
+                image = await asyncio.to_thread(
+                    engine.generate_image,
+                    prompt=request.prompt,
+                    negative_prompt=request.negative_prompt,
+                    num_inference_steps=steps,
+                    guidance_scale=guidance,
+                    width=request.width,
+                    height=request.height,
+                    seed=request.seed,
+                    **({"scheduler": request.scheduler} if request.scheduler else {}),
+                )
+            except ValueError as e:
+                # An input the model needs and did not get: the caller's to fix.
+                raise HTTPException(status_code=400, detail=str(e))
+            except RuntimeError as e:
+                # The model refused or returned something that is not a picture;
+                # its own sentence is the useful one.
+                logger.error(f"Generation failed: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+            except Exception as e:
+                logger.error(f"Generation failed: {e}", exc_info=True)
+                raise HTTPException(status_code=500, detail="Image generation failed")
+            finally:
+                _touch()
+        if request.response_format == "b64_json":
+            return _image_to_json_response(image)
+        return _image_to_response(image)
 
     @app.post("/api/generate/img2img")
     async def generate_img2img(
@@ -254,8 +382,11 @@ def create_app() -> FastAPI:
         image: UploadFile = File(...),
         images: Optional[List[UploadFile]] = File(None),
         mask: Optional[UploadFile] = File(None),
+        model: Optional[str] = Form(None),
     ):
         """Image-to-image generation.
+
+        ``model``, as in /api/generate: loaded first by a `serve` server.
 
         ``mask`` says where to change the picture, for an editor that takes
         one (Qwen-Image-2.1's edit, FLUX.1 Fill); it is forwarded only when
@@ -277,8 +408,6 @@ def create_app() -> FastAPI:
         strength draws the picture, the same call at 0.75 does not. Models
         that want a default have their own.
         """
-        engine = _get_engine()
-
         image_data = await image.read()
         input_image = Image.open(io.BytesIO(image_data)).convert("RGB")
         references = [input_image]
@@ -292,34 +421,38 @@ def create_app() -> FastAPI:
             if data:
                 mask_image = Image.open(io.BytesIO(data)).convert("RGB")
 
-        try:
-            result = await asyncio.to_thread(
-                engine.generate_image,
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                num_inference_steps=num_inference_steps,
-                guidance_scale=guidance_scale,
-                width=input_image.width,
-                height=input_image.height,
-                seed=seed,
-                image=input_image,
-                **({"images": references} if len(references) > 1 else {}),
-                **({"mask_image": mask_image} if mask_image is not None else {}),
-                **({"strength": strength} if strength is not None else {}),
-                **({"scheduler": scheduler} if scheduler else {}),
-            )
-            return _image_to_response(result)
-        except ValueError as e:
-            # An input the model needs and did not get: the caller's to fix.
-            raise HTTPException(status_code=400, detail=str(e))
-        except RuntimeError as e:
-            # The model refused or returned something that is not a picture;
-            # its own sentence is the useful one.
-            logger.error(f"img2img failed: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
-        except Exception as e:
-            logger.error(f"img2img failed: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Image-to-image generation failed")
+        async with app.state.lock:
+            engine = await _engine_for(model)
+            try:
+                result = await asyncio.to_thread(
+                    engine.generate_image,
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                    num_inference_steps=num_inference_steps,
+                    guidance_scale=guidance_scale,
+                    width=input_image.width,
+                    height=input_image.height,
+                    seed=seed,
+                    image=input_image,
+                    **({"images": references} if len(references) > 1 else {}),
+                    **({"mask_image": mask_image} if mask_image is not None else {}),
+                    **({"strength": strength} if strength is not None else {}),
+                    **({"scheduler": scheduler} if scheduler else {}),
+                )
+            except ValueError as e:
+                # An input the model needs and did not get: the caller's to fix.
+                raise HTTPException(status_code=400, detail=str(e))
+            except RuntimeError as e:
+                # The model refused or returned something that is not a picture;
+                # its own sentence is the useful one.
+                logger.error(f"img2img failed: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+            except Exception as e:
+                logger.error(f"img2img failed: {e}", exc_info=True)
+                raise HTTPException(status_code=500, detail="Image-to-image generation failed")
+            finally:
+                _touch()
+        return _image_to_response(result)
 
     # --- Video generation (LTX-2 on Apple Silicon) ---
 
@@ -375,8 +508,11 @@ def create_app() -> FastAPI:
         control_strength: Optional[float] = Form(None),
         lora: Optional[str] = Form(None),
         lora_strength: Optional[float] = Form(None),
+        model: Optional[str] = Form(None),
     ):
         """Generate a video, and return the mp4.
+
+        ``model``, as in /api/generate: loaded first by a `serve` server.
 
         Form rather than JSON because the interesting inputs are files: a
         reference image (image-to-video) and an audio track (audio-to-video,
@@ -395,8 +531,6 @@ def create_app() -> FastAPI:
         wants to hand the file to something else should not have to write it
         out again.
         """
-        engine = _get_engine()
-
         # The uploads have to exist as files: the CLI takes paths.
         temp_paths: list[Path] = []
 
@@ -431,15 +565,22 @@ def create_app() -> FastAPI:
             }
             options = {k: v for k, v in options.items() if v is not None}
 
-            output = await asyncio.to_thread(
-                engine.generate_video, prompt=prompt, seconds=seconds, **options
-            )
+            async with app.state.lock:
+                engine = await _engine_for(model)
+                try:
+                    output = await asyncio.to_thread(
+                        engine.generate_video, prompt=prompt, seconds=seconds, **options
+                    )
+                finally:
+                    _touch()
             path = Path(output)
             return Response(
                 content=path.read_bytes(),
                 media_type="video/mp4",
                 headers={"X-Output-Path": str(path)},
             )
+        except HTTPException:
+            raise
         except RuntimeError as e:
             # "not a video model", "not loaded", "ltx-2-mlx not found" — the
             # caller can act on every one of these, so they are not 500s.
@@ -462,33 +603,36 @@ def create_app() -> FastAPI:
         strength: float = Form(0.75),
         image: UploadFile = File(...),
         mask: UploadFile = File(...),
+        model: Optional[str] = Form(None),
     ):
         """Inpainting generation"""
-        engine = _get_engine()
-
         image_data = await image.read()
         mask_data = await mask.read()
         input_image = Image.open(io.BytesIO(image_data)).convert("RGB")
         mask_image = Image.open(io.BytesIO(mask_data)).convert("RGB")
 
-        try:
-            result = await asyncio.to_thread(
-                engine.generate_image,
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                num_inference_steps=num_inference_steps,
-                guidance_scale=guidance_scale,
-                width=input_image.width,
-                height=input_image.height,
-                seed=seed,
-                image=input_image,
-                mask_image=mask_image,
-                strength=strength,
-            )
-            return _image_to_response(result)
-        except Exception as e:
-            logger.error(f"Inpainting failed: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Inpainting generation failed")
+        async with app.state.lock:
+            engine = await _engine_for(model)
+            try:
+                result = await asyncio.to_thread(
+                    engine.generate_image,
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                    num_inference_steps=num_inference_steps,
+                    guidance_scale=guidance_scale,
+                    width=input_image.width,
+                    height=input_image.height,
+                    seed=seed,
+                    image=input_image,
+                    mask_image=mask_image,
+                    strength=strength,
+                )
+            except Exception as e:
+                logger.error(f"Inpainting failed: {e}", exc_info=True)
+                raise HTTPException(status_code=500, detail="Inpainting generation failed")
+            finally:
+                _touch()
+        return _image_to_response(result)
 
     @app.post("/api/generate/controlnet")
     async def generate_controlnet(
@@ -504,6 +648,7 @@ def create_app() -> FastAPI:
         control_guidance_end: float = Form(1.0),
         control_image: Optional[UploadFile] = File(None),
         control_type: Optional[str] = Form(None),
+        model: Optional[str] = Form(None),
     ):
         """Generate image with ControlNet.
 
@@ -511,65 +656,70 @@ def create_app() -> FastAPI:
         hed, mlsd — for union ControlNets that take several kinds
         (z-image-turbo-controlnet-mlx). Single-kind ControlNets ignore it.
         """
-        engine = _get_engine()
-
-        if not engine.is_controlnet_pipeline:
-            raise HTTPException(
-                status_code=400, detail="Current model is not a ControlNet model"
-            )
-
         control_pil = None
         if control_image:
             data = await control_image.read()
             control_pil = Image.open(io.BytesIO(data)).convert("RGB")
 
-        try:
-            result = await asyncio.to_thread(
-                engine.generate_image,
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                num_inference_steps=num_inference_steps,
-                guidance_scale=guidance_scale,
-                width=width,
-                height=height,
-                seed=seed,
-                control_image=control_pil,
-                controlnet_conditioning_scale=controlnet_conditioning_scale,
-                control_guidance_start=control_guidance_start,
-                control_guidance_end=control_guidance_end,
-                **({"control_type": control_type} if control_type else {}),
-            )
-            return _image_to_response(result)
-        except ValueError as e:
-            # A missing input or an unknown control_type: the caller's to fix.
-            raise HTTPException(status_code=400, detail=str(e))
-        except Exception as e:
-            logger.error(f"ControlNet generation failed: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="ControlNet generation failed")
+        async with app.state.lock:
+            engine = await _engine_for(model)
+            if not engine.is_controlnet_pipeline:
+                raise HTTPException(
+                    status_code=400, detail="Current model is not a ControlNet model"
+                )
+            try:
+                result = await asyncio.to_thread(
+                    engine.generate_image,
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                    num_inference_steps=num_inference_steps,
+                    guidance_scale=guidance_scale,
+                    width=width,
+                    height=height,
+                    seed=seed,
+                    control_image=control_pil,
+                    controlnet_conditioning_scale=controlnet_conditioning_scale,
+                    control_guidance_start=control_guidance_start,
+                    control_guidance_end=control_guidance_end,
+                    **({"control_type": control_type} if control_type else {}),
+                )
+            except ValueError as e:
+                # A missing input or an unknown control_type: the caller's to fix.
+                raise HTTPException(status_code=400, detail=str(e))
+            except Exception as e:
+                logger.error(f"ControlNet generation failed: {e}", exc_info=True)
+                raise HTTPException(status_code=500, detail="ControlNet generation failed")
+            finally:
+                _touch()
+        return _image_to_response(result)
 
     # --- LoRA management ---
 
     @app.post("/api/lora/load")
     async def load_lora(request: LoadLoRARequest):
-        engine = _get_engine()
-        try:
-            success = engine.load_lora_runtime(
-                repo_id=request.repo_id,
-                weight_name=request.weight_name,
-                scale=request.scale,
-            )
-            if success:
-                return {"message": f"LoRA {request.lora_name} loaded (scale={request.scale})"}
-            raise HTTPException(status_code=400, detail="Failed to load LoRA")
-        except Exception as e:
-            logger.error(f"LoRA load failed: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to load LoRA")
+        async with app.state.lock:
+            engine = _get_engine()
+            try:
+                success = engine.load_lora_runtime(
+                    repo_id=request.repo_id,
+                    weight_name=request.weight_name,
+                    scale=request.scale,
+                )
+                if success:
+                    return {"message": f"LoRA {request.lora_name} loaded (scale={request.scale})"}
+                raise HTTPException(status_code=400, detail="Failed to load LoRA")
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"LoRA load failed: {e}", exc_info=True)
+                raise HTTPException(status_code=500, detail="Failed to load LoRA")
 
     @app.post("/api/lora/unload")
     async def unload_lora():
-        engine = _get_engine()
-        if engine.unload_lora():
-            return {"message": "LoRA unloaded"}
+        async with app.state.lock:
+            engine = _get_engine()
+            if engine.unload_lora():
+                return {"message": "LoRA unloaded"}
         raise HTTPException(status_code=400, detail="Failed to unload LoRA")
 
     @app.get("/api/lora/status")
@@ -638,13 +788,17 @@ def create_app() -> FastAPI:
     return app
 
 
-def run_server(host: str = None, port: int = None):
-    """Start the API server"""
+def run_server(host: str = None, port: int = None, pinned: Optional[str] = None,
+               keep_alive: Optional[float] = None):
+    """Start the API server. ``pinned`` and ``keep_alive``: see create_app."""
     host = host or settings.server.host
     port = port or settings.server.port
 
-    app = create_app()
-    logger.info(f"Starting server: http://{host}:{port}")
+    app = create_app(pinned=pinned, keep_alive=keep_alive)
+    how = f"for {pinned}" if pinned else "loading models on demand"
+    if keep_alive is not None:
+        how += f", unloading after {keep_alive:g} s idle"
+    logger.info(f"Starting server: http://{host}:{port} ({how})")
     # So `ollamadiffuser ps` can find this server among others running.
     from ..core.utils import server_registry
     server_registry.register(host, port, model_manager.get_current_model()

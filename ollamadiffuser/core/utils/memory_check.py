@@ -5,17 +5,18 @@ not fit does not fail cleanly: the system compresses and swaps until it
 stalls. The M3 Ultra this was measured on went down with a watchdog panic
 (free memory 0, 58 GB compressed) when a LoRA rebuild pushed it there beside
 Ollama's 22 GB, and several agents each starting a model server can get there
-just as well. So a load is refused when free memory is below the minimum the
-registry gives for the model (``hardware_requirements.min_vram_gb``), with
-the numbers and the way around it. NVIDIA cards fail with an ordinary
-out-of-memory error instead, which the caller sees, so they are not checked.
+just as well. So a load is refused when free memory is below what the model
+needs — its measured peak once a generation has recorded one, the registry's
+``hardware_requirements.min_vram_gb`` until then — with the numbers and the
+way around it. NVIDIA cards fail with an ordinary out-of-memory error
+instead, which the caller sees, so they are not checked.
 """
 from __future__ import annotations
 
 import logging
 import os
 import platform
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -46,15 +47,32 @@ def needed_gb(info: Optional[Dict]) -> Optional[float]:
     return need or None
 
 
+# What a backend's own count of a model's peak leaves out: Python, decoded
+# pictures, files being read, and the 2 GB MLX may keep cached.
+MARGIN_GB = 3.0
+
+
+def need_for(model_name: str, info: Optional[Dict]) -> Tuple[Optional[float], str]:
+    """The memory ``model_name`` needs, and where the number comes from: its
+    measured peak once a generation has recorded one (memory_record.py),
+    otherwise the registry's estimate."""
+    from . import memory_record
+    seen = memory_record.measured(model_name)
+    if seen:
+        peak = float(seen["peak_gb"])
+        return round(peak + MARGIN_GB, 1), f"its measured peak, {peak:g} GB, plus {MARGIN_GB:g}"
+    return needed_gb(info), "the registry's estimate"
+
+
 def refusal(model_name: str, info: Optional[Dict]) -> Optional[str]:
     """Why ``model_name`` should not be loaded now, or None when it may be."""
     if os.environ.get(SKIP_ENV) or not unified_memory():
         return None
-    need, free = needed_gb(info), free_gb()
+    (need, source), free = need_for(model_name, info), free_gb()
     if need is None or free is None or free >= need:
         return None
     return (
-        f"{model_name} needs about {need:g} GB of memory and {free:.1f} GB is free. "
+        f"{model_name} needs about {need:g} GB of memory ({source}) and {free:.1f} GB is free. "
         "Free some first — `ollamadiffuser ps` lists the model servers running, "
         "`ollamadiffuser stop --port N` stops one — or load it anyway with --force "
         f"({SKIP_ENV}=1 for a server or an agent)."

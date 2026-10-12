@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### ⇄ One server for every model, loaded on demand
+
+- **`ollamadiffuser serve` loads the model each request names.** The request
+  carries `model` in `/api/generate`'s JSON, or as a form field in img2img,
+  inpaint, ControlNet and video. One server serves every installed model,
+  one in memory at a time, the way Ollama does it. A request for another
+  model takes its turn: the server unloads the current model and loads the
+  one asked for. If the memory check refuses the new one, the previous model
+  is put back and the answer is 503 with the reason. Requests take turns, so
+  only one job, load or unload happens at a time.
+- **`--keep-alive 10m`** on `serve` and `run` unloads a model after that long
+  idle, giving its memory back, and the next request loads it again. `0`
+  frees it after each job. By default a model stays loaded.
+  `serve --preload MODEL` warms one before the first request.
+- **`run MODEL` is unchanged:** it serves that model only. A request naming
+  another model gets a 409 that points to `serve`.
+- **Jobs send their model with the request.** This covers `generate` /
+  `edit` / `video` and MCP. A job whose model no server holds goes to a
+  server that loads on demand (an idle one first, so nobody's model is
+  swapped out) instead of loading in the job's own process. `--server`
+  takes such a server whatever it holds.
+- **Servers say how they take models.** `/api/models/running` and
+  `/api/health` report `on_demand`, `pinned`, `keep_alive_s` and
+  `unloads_in_s`, and `ps` shows them.
+
+### 📏 The memory check goes by measured peaks
+
+- **Every generation records its memory peak** per model, in
+  `~/.ollamadiffuser/memory/<model>.json`. The number is MLX's own count for
+  mflux models, PyTorch's on NVIDIA, and the Metal driver's for PyTorch on a
+  Mac. LTX-2 renders in another process and isn't measured. The check uses
+  the highest peak plus 3 GB once a model has one, and the registry's
+  estimate until then, and its message says which. `list --json`
+  (`measured_peak_gb`) and `show` display it.
+- **Measured on the M3 Ultra box** with one `serve --keep-alive 60s`:
+  - The first Boogu image took 28.5 s, model load included. A swap to
+    FLUX.2 klein for an edit took 21.1 s; swapping back took 25.5 s.
+  - A model that wouldn't fit was refused, and Boogu was put back.
+  - Sixty idle seconds later the server unloaded Boogu and free memory rose
+    by 20 GB.
+  - Boogu's measured peak was 32.1 GB, against the registry's 10. FLUX.2
+    klein edit's was 13.6 GB, against 12.
+
 ## [2.4.0] - 2026-10-10
 
 A minor version because jobs can now run on another machine's GPU. It also

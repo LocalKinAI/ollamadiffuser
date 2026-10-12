@@ -206,7 +206,8 @@ def create_mcp_server():
     async def list_servers() -> str:
         """List the OllamaDiffuser servers running on this machine and the model each
         holds. A job for one of those models goes to its server instead of loading the
-        model a second time. With OLLAMADIFFUSER_SERVER set, the servers on that machine."""
+        model a second time, and one for a model no server holds goes to a server that
+        loads models on demand. With OLLAMADIFFUSER_SERVER set, the servers on that machine."""
         lines = []
         remote = os.environ.get(jobs.SERVER_ENV)
         if remote:
@@ -227,7 +228,8 @@ def create_mcp_server():
             else:
                 what = "no model loaded" if server["answering"] else "not answering"
             pid = f", pid {server['pid']}" if server["pid"] else ""
-            lines.append(f"port {server['port']}: {what}{pid}")
+            mode = "; loads models on demand" if server.get("on_demand") else ""
+            lines.append(f"port {server['port']}: {what}{pid}{mode}")
         return "\n".join(lines)
 
     @mcp_server.tool()

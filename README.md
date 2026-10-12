@@ -688,24 +688,26 @@ Features:
 
 ### REST API
 ```bash
-# Start API server
-ollamadiffuser --mode api
-ollamadiffuser load stable-diffusion-1.5
+# Start a server. It loads the model each request names, one in memory at a
+# time, and with --keep-alive gives the memory back after 10 idle minutes.
+ollamadiffuser serve --keep-alive 10m
 
 # Text-to-image
 curl -X POST http://localhost:8000/api/generate \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "a beautiful landscape", "width": 1024, "height": 1024, "seed": 42}'
+  -d '{"model": "stable-diffusion-1.5", "prompt": "a beautiful landscape", "width": 1024, "height": 1024, "seed": 42}' \
+  --output landscape.png
 
-# Image-to-image
+# Image-to-image (another model: the server swaps it in)
 curl -X POST http://localhost:8000/api/generate/img2img \
+  -F "model=flux.2-klein-4b-edit-mlx" \
   -F "prompt=oil painting style" \
-  -F "strength=0.75" \
   -F "image=@input.png" \
   --output result.png
 
 # Inpainting
 curl -X POST http://localhost:8000/api/generate/inpaint \
+  -F "model=stable-diffusion-1.5" \
   -F "prompt=a red car" \
   -F "image=@photo.png" \
   -F "mask=@mask.png" \
@@ -713,6 +715,8 @@ curl -X POST http://localhost:8000/api/generate/inpaint \
 
 # API docs: http://localhost:8000/docs
 ```
+
+`ollamadiffuser run MODEL` starts a server for that model only, and answers a request for another with 409. Both kinds take `--keep-alive`, and `/api/models/running` says which kind a server is and when its model will be let go.
 
 ### MCP Server (AI Assistant Integration)
 
@@ -760,7 +764,7 @@ ollamadiffuser generate "a poster that reads 海边小屋" -m qwen-image-2.1-tur
 ```
 
 - **One command, one file.** `generate`, `edit` and `video` print the file they wrote. With `--json`, stdout is one JSON object, or `{"error": …}` with exit code 1, and everything else goes to stderr.
-- **No second copy.** When a server already holds the model (`ollamadiffuser run`, the ComfyUI nodes, another agent), the job goes to it. Otherwise the model loads for the job and is let go after it.
+- **No second copy.** When a server already holds the model (`ollamadiffuser run`, the ComfyUI nodes, another agent), the job goes to it. When none does but one was started with `ollamadiffuser serve`, that one loads the model, so the next job finds it warm. Otherwise the model loads for the job and is let go after it.
 - **The GPU on another machine.** `--server 192.168.0.21:8010` sends the job to the OllamaDiffuser server running on that machine. Set it once with `OLLAMADIFFUSER_SERVER` instead; `ollamadiffuser mcp` reads it too. The pictures to edit go up from this machine, the result is saved on this machine, and nothing loads here. Start that server with `ollamadiffuser run MODEL --host 0.0.0.0 --port 8010`, because the default `localhost` takes no calls from other machines. `ollamadiffuser ps --host 192.168.0.21` lists what runs there.
 - **Seeing what runs.** `ollamadiffuser ps --json` lists every server on this machine and its model, including servers started by older versions or from another config directory. `list --json` lists installed models with their memory needs, and `stop --port N` / `--all` stops servers.
 - **Memory.** On Apple Silicon, where the GPU shares the machine's memory, a model is not loaded when less than its minimum is free. The error gives the numbers. `--force` (or `OLLAMADIFFUSER_SKIP_MEMORY_CHECK=1`) loads it anyway.

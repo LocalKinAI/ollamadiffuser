@@ -150,5 +150,8 @@ def discover(ports: Iterable[int] = USUAL_PORTS, timeout: float = 1.0,
             "model": ((answer or {}).get("model") or info.get("name")) if loaded else None,
             "type": info.get("type") if loaded else None,
             "device": info.get("device") if loaded else None,
+            # A server started with `serve` loads whichever model a request names.
+            "on_demand": bool(answer and answer.get("on_demand")),
+            "keep_alive_s": (answer or {}).get("keep_alive_s"),
         })
     return found

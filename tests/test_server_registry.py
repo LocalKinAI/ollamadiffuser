@@ -85,6 +85,7 @@ def test_discover_finds_servers_that_left_no_record(home, monkeypatch):
     assert found[8000]["pid"] == os.getpid() and found[8000]["url"] == "http://127.0.0.1:8000"
     assert found[8010]["pid"] is None and found[8010]["model"] == "qwen-turbo-one"
     assert found[8010]["type"] == "mlx" and found[8010]["loaded"]
+    assert found[8000]["on_demand"] is False
 
 
 def test_discover_reports_a_recorded_server_that_stopped_answering(home, monkeypatch):
@@ -144,3 +145,10 @@ def test_ps_host(home, monkeypatch):
     assert [s["url"] for s in json.loads(result.output)] == ["http://192.168.0.21:8010"]
     result = CliRunner().invoke(model_commands.ps, ["--host", "192.168.0.99"])
     assert "No model server is running on 192.168.0.99" in result.output
+
+
+def test_discover_says_which_servers_load_on_demand(home, monkeypatch):
+    answers = {8000: {"loaded": False, "on_demand": True, "keep_alive_s": 600.0}}
+    monkeypatch.setattr(server_registry, "ask", lambda host, port, timeout=2.0: answers.get(port))
+    (only,) = server_registry.discover()
+    assert only["on_demand"] is True and only["keep_alive_s"] == 600.0 and only["model"] is None

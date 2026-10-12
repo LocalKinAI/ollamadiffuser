@@ -91,8 +91,12 @@ def pull(model_name: str, force: bool):
 @click.option('--host', '-h', default=None, help='Server host address')
 @click.option('--port', '-p', default=None, type=int, help='Server port')
 @click.option('--force', is_flag=True, help='Load the model even if free memory looks too low')
-def run(model_name: str, host: Optional[str], port: Optional[int], force: bool):
-    """Run model service"""
+@click.option('--keep-alive', default=None, metavar='DURATION',
+              help='Unload the model after this long idle (90s, 10m, 1h; 0 = after each job) and '
+                   'reload it on the next request. Default: keep it.')
+def run(model_name: str, host: Optional[str], port: Optional[int], force: bool, keep_alive: Optional[str]):
+    """Run model service (this model only; `serve` loads models on demand)"""
+    keep_alive_s = _keep_alive_option(keep_alive)
     rprint(f"[blue]Starting model service: {model_name}[/blue]")
 
     # Check if model is installed
@@ -110,7 +114,7 @@ def run(model_name: str, host: Optional[str], port: Optional[int], force: bool):
 
     # Start server
     try:
-        run_server(host=host, port=port)
+        run_server(host=host, port=port, pinned=model_name, keep_alive=keep_alive_s)
     except KeyboardInterrupt:
         rprint("\n[yellow]Server stopped[/yellow]")
         model_manager.unload_model()
@@ -134,15 +138,20 @@ def list(hardware: bool, as_json: bool):
     current_model = model_manager.get_current_model()
 
     if as_json:
+        from ..core.utils import memory_record
         rows = []
         for model_name in installed_models:
             info = model_manager.get_model_info(model_name) or {}
             hw_req = info.get('hardware_requirements') or {}
+            seen = memory_record.measured(model_name) or {}
             rows.append({
                 "name": model_name,
                 "type": info.get('model_type'),
                 "mlx_variant": (info.get('parameters') or {}).get('mlx_variant'),
                 "min_memory_gb": hw_req.get('min_vram_gb'),
+                # What its generations here really took (the memory check's
+                # number once there is one); None until it has run.
+                "measured_peak_gb": seen.get('peak_gb'),
                 "size": info.get('size'),
                 "path": info.get('local_path'),
                 "notes": hw_req.get('performance_notes'),
@@ -264,6 +273,13 @@ def show(model_name: str):
         rprint(f"  Supported Devices: {', '.join(hw_req.get('supported_devices', []))}")
         if hw_req.get('performance_notes'):
             rprint(f"  Performance Notes: {hw_req.get('performance_notes')}")
+
+    from ..core.utils import memory_record
+    seen = memory_record.measured(model_name)
+    if seen:
+        size = f" at {seen['width']}×{seen['height']}" if seen.get('width') and seen.get('height') else ""
+        rprint(f"\n[bold]Measured peak:[/bold] {seen['peak_gb']:g} GB{size} "
+               f"({seen.get('runs', 1)} runs, last highest {seen.get('measured_at', '?')})")
 
     if 'parameters' in info and info['parameters']:
         rprint("\n[bold]Default Parameters:[/bold]")
@@ -621,6 +637,7 @@ def ps(as_json: bool, host: Optional[str]):
     table.add_column("Model", style="green")
     table.add_column("Type")
     table.add_column("Device")
+    table.add_column("Loads")
     table.add_column("PID", style="dim")
     for server in servers:
         if not server["answering"]:
@@ -629,9 +646,22 @@ def ps(as_json: bool, host: Optional[str]):
             model = server["model"] or "?"
         else:
             model = "[yellow](no model loaded)[/yellow]"
+        loads = ""
+        if server["answering"]:
+            loads = "on demand" if server.get("on_demand") else "this model only"
+            if server.get("keep_alive_s") is not None:
+                loads += f", frees after {_duration(server['keep_alive_s'])} idle"
         table.add_row(str(server["port"]), model, str(server["type"] or ""),
-                      str(server["device"] or ""), str(server["pid"] or ""))
+                      str(server["device"] or ""), loads, str(server["pid"] or ""))
     console.print(table)
+
+
+def _duration(seconds: float) -> str:
+    if seconds >= 3600:
+        return f"{seconds / 3600:g}h"
+    if seconds >= 60:
+        return f"{seconds / 60:g}m"
+    return f"{seconds:g}s"
 
 
 @click.command()
@@ -659,14 +689,45 @@ def unload():
         rprint("[yellow]No model to unload[/yellow]")
 
 
+def _keep_alive_option(value: Optional[str]) -> Optional[float]:
+    from ..api.server import parse_keep_alive
+    try:
+        return parse_keep_alive(value)
+    except ValueError as e:
+        raise click.BadParameter(str(e), param_hint="--keep-alive")
+
+
 @click.command()
 @click.option('--host', '-h', default=None, help='Server host address')
 @click.option('--port', '-p', default=None, type=int, help='Server port')
-def serve(host: Optional[str], port: Optional[int]):
-    """Start the API server without loading a model"""
-    rprint("[blue]Starting OllamaDiffuser API server...[/blue]")
+@click.option('--keep-alive', default=None, metavar='DURATION',
+              help='Unload a model after this long idle (90s, 10m, 1h; 0 = after each job). '
+                   'Default: keep it until another is asked for.')
+@click.option('--preload', default=None, metavar='MODEL', help='Load this model before taking requests.')
+@click.option('--force', is_flag=True, help='Preload even if free memory looks too low')
+def serve(host: Optional[str], port: Optional[int], keep_alive: Optional[str],
+          preload: Optional[str], force: bool):
+    """Start the API server; it loads the model each request names.
+
+    \b
+    One server for every installed model, one in memory at a time: a request
+    naming another model swaps it in (the previous one is unloaded first, and
+    put back if the new one won't fit in free memory).
+      ollamadiffuser serve --port 8000 --keep-alive 10m
+      ollamadiffuser generate "a fox" -m z-image-turbo-mlx   # goes to it
+    """
+    keep_alive_s = _keep_alive_option(keep_alive)
+    if preload:
+        if not model_manager.is_model_installed(preload):
+            rprint(f"[red]Model {preload} is not installed. Please run first: ollamadiffuser pull {preload}[/red]")
+            sys.exit(1)
+        rprint(f"[yellow]Loading {preload}...[/yellow]")
+        if not model_manager.load_model(preload, force=force):
+            rprint(f"[red]{model_manager.last_error or f'Failed to load model {preload}!'}[/red]")
+            sys.exit(1)
+    rprint("[blue]Starting OllamaDiffuser API server (models load on demand)...[/blue]")
     try:
-        run_server(host=host, port=port)
+        run_server(host=host, port=port, keep_alive=keep_alive_s)
     except KeyboardInterrupt:
         rprint("\n[yellow]Server stopped[/yellow]")
 

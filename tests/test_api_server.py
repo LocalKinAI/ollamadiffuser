@@ -286,3 +286,206 @@ class TestNoiseGuard:
                 raise ValueError("nope")
 
         assert InferenceStrategy.looks_like_noise(NotAnImage()) is False
+
+
+class _Manager:
+    """Enough of ModelManager for the server: one model loaded at a time,
+    "big" refused by the memory check (after unloading, as the real one does)."""
+
+    def __init__(self, loaded="a", installed=("a", "b", "big")):
+        self.installed, self.engines, self.loads, self.unloads = set(installed), {}, [], 0
+        self.last_error = None
+        self.current_model_name = loaded
+        self.loaded_model = self._engine(loaded) if loaded else None
+
+    def _engine(self, name):
+        if name not in self.engines:
+            engine = MagicMock(name=f"engine-{name}")
+            engine.generate_image.return_value = Image.new("RGB", (8, 8))
+            engine.get_model_info.return_value = {"type": "mlx", "device": "mps"}
+            engine.is_controlnet_pipeline = False
+            self.engines[name] = engine
+        return self.engines[name]
+
+    def is_model_loaded(self):
+        return self.current_model_name is not None
+
+    def get_current_model(self):
+        return self.current_model_name
+
+    def is_model_installed(self, name):
+        return name in self.installed
+
+    def load_model(self, name, force=False, persist=True):
+        self.loads.append((name, force))
+        self.unload_model()
+        if name == "big" and not force:
+            self.last_error = "big needs about 60 GB of memory (the registry's estimate) and 30.0 GB is free."
+            return False
+        self.current_model_name, self.loaded_model = name, self._engine(name)
+        return True
+
+    def unload_model(self, persist=True):
+        if self.current_model_name is not None:
+            self.unloads += 1
+        self.current_model_name, self.loaded_model = None, None
+
+    def list_available_models(self):
+        return sorted(self.installed)
+
+    def list_installed_models(self):
+        return sorted(self.installed)
+
+
+def _serving(manager, **kwargs):
+    from ollamadiffuser.api.server import create_app
+    from fastapi.testclient import TestClient
+    with patch("ollamadiffuser.api.server.model_manager", manager):
+        app = create_app(**kwargs)
+        yield TestClient(app), app
+
+
+@pytest.fixture
+def on_demand():
+    manager = _Manager()
+    for client, app in _serving(manager):
+        yield client, manager, app
+
+
+@pytest.fixture
+def for_a():
+    manager = _Manager()
+    for client, app in _serving(manager, pinned="a"):
+        yield client, manager, app
+
+
+class TestModelsOnDemand:
+    """`serve`: one server for every installed model, one in memory at a time."""
+
+    def test_a_request_naming_another_model_swaps_it_in(self, on_demand):
+        tc, mm, _ = on_demand
+        resp = tc.post("/api/generate", json={"prompt": "p", "model": "b"})
+        assert resp.status_code == 200, resp.text
+        assert mm.current_model_name == "b" and mm.engines["b"].generate_image.called
+        assert not mm.engines["a"].generate_image.called
+
+    def test_no_model_named_uses_the_one_loaded(self, on_demand):
+        tc, mm, _ = on_demand
+        assert tc.post("/api/generate", json={"prompt": "p"}).status_code == 200
+        assert mm.loads == [] and mm.engines["a"].generate_image.called
+
+    def test_forms_name_the_model_too(self, on_demand):
+        tc, mm, _ = on_demand
+        resp = tc.post("/api/generate/img2img", data={"prompt": "p", "model": "b"},
+                       files={"image": ("a.png", TestImg2ImgEndpoint._png("red"), "image/png")})
+        assert resp.status_code == 200, resp.text
+        assert mm.current_model_name == "b"
+
+    def test_a_model_not_installed_is_404(self, on_demand):
+        tc, mm, _ = on_demand
+        resp = tc.post("/api/generate", json={"prompt": "p", "model": "nope"})
+        assert resp.status_code == 404 and "ollamadiffuser pull nope" in resp.json()["detail"]
+        assert mm.current_model_name == "a"
+
+    def test_a_swap_that_wont_fit_puts_the_previous_model_back(self, on_demand):
+        tc, mm, _ = on_demand
+        resp = tc.post("/api/generate", json={"prompt": "p", "model": "big"})
+        assert resp.status_code == 503 and "needs about 60 GB" in resp.json()["detail"]
+        assert mm.loads == [("big", False), ("a", True)] and mm.current_model_name == "a"
+
+    def test_nothing_loaded_and_nothing_named_says_to_name_one(self):
+        for tc, _ in _serving(_Manager(loaded=None)):
+            resp = tc.post("/api/generate", json={"prompt": "p"})
+            assert resp.status_code == 400 and "No model loaded" in resp.json()["detail"]
+
+    def test_running_says_how_the_server_takes_models(self):
+        for tc, _ in _serving(_Manager(), keep_alive=600.0):
+            data = tc.get("/api/models/running").json()
+            assert data["on_demand"] is True and data["pinned"] is None
+            assert data["keep_alive_s"] == 600.0 and 590 < data["unloads_in_s"] <= 600
+        for tc, _ in _serving(_Manager(), pinned="a"):
+            data = tc.get("/api/models/running").json()
+            assert data["on_demand"] is False and data["pinned"] == "a" and data["keep_alive_s"] is None
+
+    def test_explicit_load_still_answers_400_when_refused(self, on_demand):
+        tc, mm, _ = on_demand
+        resp = tc.post("/api/models/load", json={"model_name": "big"})
+        assert resp.status_code == 400 and "needs about 60 GB" in resp.json()["detail"]
+        assert mm.current_model_name == "a"
+
+
+class TestServerForOneModel:
+    """`run MODEL`: that model only, as before."""
+
+    def test_another_model_is_refused_and_says_where_to_go(self, for_a):
+        tc, mm, _ = for_a
+        resp = tc.post("/api/generate", json={"prompt": "p", "model": "b"})
+        assert resp.status_code == 409 and "ollamadiffuser serve" in resp.json()["detail"]
+        assert mm.current_model_name == "a" and mm.loads == []
+        assert tc.post("/api/generate", json={"prompt": "p", "model": "a"}).status_code == 200
+
+    def test_the_refusal_survives_the_video_endpoints_own_error_handling(self, for_a):
+        tc, _, _ = for_a
+        resp = tc.post("/api/generate/video", data={"prompt": "p", "model": "b"})
+        assert resp.status_code == 409
+
+    def test_its_model_comes_back_after_a_keep_alive_let_it_go(self):
+        manager = _Manager(loaded=None)
+        for tc, _ in _serving(manager, pinned="a", keep_alive=60.0):
+            assert tc.post("/api/generate", json={"prompt": "p"}).status_code == 200
+            assert manager.loads == [("a", False)] and manager.current_model_name == "a"
+
+
+class TestKeepAlive:
+    def test_an_idle_model_is_unloaded_and_a_busy_one_kept(self):
+        import asyncio
+        import time
+        manager = _Manager()
+        for _, app in _serving(manager, keep_alive=60.0):
+            app.state.last_used = time.monotonic() - 30
+            assert asyncio.run(app.state.expire()) is False and manager.unloads == 0
+            app.state.last_used = time.monotonic() - 61
+            assert asyncio.run(app.state.expire()) is True and manager.unloads == 1
+            assert manager.current_model_name is None
+
+    def test_without_keep_alive_nothing_is_unloaded(self):
+        import asyncio
+        import time
+        manager = _Manager()
+        for _, app in _serving(manager):
+            app.state.last_used = time.monotonic() - 86400
+            assert asyncio.run(app.state.expire()) is False and manager.unloads == 0
+
+    def test_durations(self):
+        from ollamadiffuser.api.server import parse_keep_alive
+        assert parse_keep_alive("10m") == 600 and parse_keep_alive("1h") == 3600
+        assert parse_keep_alive("90s") == 90 and parse_keep_alive("90") == 90 and parse_keep_alive("0") == 0
+        assert parse_keep_alive(None) is None and parse_keep_alive("forever") is None
+        assert parse_keep_alive("-1") is None
+        with pytest.raises(ValueError, match="not a duration"):
+            parse_keep_alive("soon")
+
+
+class TestServeAndRunOptions:
+    def test_serve_preloads_and_passes_keep_alive(self, monkeypatch):
+        from click.testing import CliRunner
+        from ollamadiffuser.cli import model_commands
+        started, loaded = {}, []
+        monkeypatch.setattr(model_commands, "run_server", lambda **kw: started.update(kw))
+        monkeypatch.setattr(model_commands.model_manager, "is_model_installed", lambda name: True)
+        monkeypatch.setattr(model_commands.model_manager, "load_model",
+                            lambda name, force=False, persist=True: loaded.append((name, force)) or True)
+        result = CliRunner().invoke(model_commands.serve, ["--keep-alive", "10m", "--preload", "a", "-p", "8010"])
+        assert result.exit_code == 0, result.output
+        assert loaded == [("a", False)] and started == {"host": None, "port": 8010, "keep_alive": 600.0}
+
+    def test_run_pins_its_model(self, monkeypatch):
+        from click.testing import CliRunner
+        from ollamadiffuser.cli import model_commands
+        started = {}
+        monkeypatch.setattr(model_commands, "run_server", lambda **kw: started.update(kw))
+        monkeypatch.setattr(model_commands.model_manager, "is_model_installed", lambda name: True)
+        monkeypatch.setattr(model_commands.model_manager, "load_model", lambda name, force=False, persist=True: True)
+        result = CliRunner().invoke(model_commands.run, ["a", "--keep-alive", "0"])
+        assert result.exit_code == 0, result.output
+        assert started["pinned"] == "a" and started["keep_alive"] == 0.0

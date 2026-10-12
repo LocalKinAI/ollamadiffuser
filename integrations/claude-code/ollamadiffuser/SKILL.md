@@ -51,8 +51,8 @@ Use what is installed when it fits the job; `notes` in `list --json` says what e
 
 ## Memory
 
-A model needs about `min_memory_gb` free. On a Mac a load is refused when that much is not free,
-with the numbers in the error. Then prefer a smaller model, or stop a server you started yourself
+A model needs about `min_memory_gb` free, or its `measured_peak_gb` plus a little once it has run
+here. On a Mac a load is refused when that much is not free, with the numbers in the error. Then prefer a smaller model, or stop a server you started yourself
 (`ollamadiffuser stop --port N`). Pass `--force` only if the user agrees: on a Mac, running out of
 memory can stall the whole machine.
 
@@ -71,16 +71,19 @@ loads here. A server holding another model is left alone, and the error says whi
 holds; leave `-m` out to use it. A server must be started on that machine with
 `--host 0.0.0.0`, because the default host takes no calls from other machines.
 
-## Many jobs with one model
+## Many jobs
 
-Each job loads the model when no server holds it, which takes seconds to a minute. For a batch,
-start a server once and send the jobs to it:
+Each job loads its model when no server holds it, which takes seconds to a minute. For a batch,
+or for several models in turn, start one server that loads models on demand, and every job
+finds it:
 
 ```bash
-ollamadiffuser run MODEL --port 8010 > /tmp/ollamadiffuser-8010.log 2>&1 &
-# wait until `ollamadiffuser ps --json` lists port 8010 with the model loaded, then run the jobs
-ollamadiffuser stop --port 8010   # when done
+ollamadiffuser serve --port 8010 --keep-alive 10m > /tmp/ollamadiffuser-8010.log 2>&1 &
+# then run jobs as above: a job for any installed model goes to it and it swaps that model in
+ollamadiffuser stop --port 8010   # when done; or let --keep-alive free the memory when idle
 ```
+
+`ollamadiffuser run MODEL` instead starts a server for that one model.
 
 ## Other ways in
 

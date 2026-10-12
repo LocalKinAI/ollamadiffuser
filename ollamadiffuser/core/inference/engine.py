@@ -198,23 +198,39 @@ class InferenceEngine:
             gen_kwargs["control_guidance_start"] = control_guidance_start
             gen_kwargs["control_guidance_end"] = control_guidance_end
 
-        image = self._strategy.generate(
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            num_inference_steps=num_inference_steps,
-            guidance_scale=guidance_scale,
-            width=width,
-            height=height,
-            seed=seed,
-            **gen_kwargs,
-        )
+        from ..utils import memory_record
+
+        with memory_record.Meter(self._memory_backend()) as meter:
+            image = self._strategy.generate(
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                num_inference_steps=num_inference_steps,
+                guidance_scale=guidance_scale,
+                width=width,
+                height=height,
+                seed=seed,
+                **gen_kwargs,
+            )
         # A strategy that failed returns a card with the error drawn on it
         # (base._create_error_image). Passed on, it is a success that isn't
         # one; the API, the web UI and one-off jobs all report an exception.
         error = getattr(image, "info", {}).get("ollamadiffuser_error")
         if error:
             raise RuntimeError(error)
+        # What it took, for the memory check the next time it loads.
+        memory_record.record(getattr(self.model_config, "name", None), meter.peak_bytes, width, height)
         return image
+
+    def _memory_backend(self) -> Optional[str]:
+        """Where this model's memory is counted: MLX for mflux models, the
+        PyTorch device for the rest; None for one that renders in another
+        process (LTX-2 through the ltx-2-mlx CLI) or on the CPU."""
+        kind = getattr(self.model_config, "model_type", None)
+        if kind == "mlx":
+            return "mlx"
+        if kind == "ltx-video-mlx":
+            return None
+        return self.device if self.device in ("cuda", "mps") else None
 
     def generate_video(
         self,
@@ -239,9 +255,15 @@ class InferenceEngine:
                 f"ltx-video-mlx on Apple Silicon, diffusers-video elsewhere; see "
                 f"`ollamadiffuser registry list`) to generate video."
             )
-        return self._strategy.generate_video(
-            prompt=prompt, output=output, seconds=seconds, **kwargs
-        )
+        from ..utils import memory_record
+
+        with memory_record.Meter(self._memory_backend()) as meter:
+            path = self._strategy.generate_video(
+                prompt=prompt, output=output, seconds=seconds, **kwargs
+            )
+        memory_record.record(getattr(self.model_config, "name", None), meter.peak_bytes,
+                             kwargs.get("width"), kwargs.get("height"))
+        return path
 
     def unload(self):
         """Unload the current model and free resources."""
