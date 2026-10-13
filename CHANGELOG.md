@@ -5,7 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.5.0] - 2026-10-12
+
+A minor version: one `serve` server now serves every installed model. It
+loads each one on demand and can keep several in memory
+(`--max-loaded`), and the memory check goes by what each model was
+measured to take.
+
+### Upgrading from 2.4.0
+
+- `pip install -U ollamadiffuser`, or re-run the `curl | sh` installer. No
+  dependency changes.
+- Restart servers that were running before the upgrade. Until then they
+  ignore the `model` a request names and answer with the model they hold.
+  Jobs from 2.5.0 check what a server holds first, so only direct HTTP
+  calls are affected.
+- Requests that name no model work as before.
 
 ### ⇄ One server for every model, loaded on demand
 

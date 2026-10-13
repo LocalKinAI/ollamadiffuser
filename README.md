@@ -2,9 +2,19 @@
 
 **Thank you for the incredible support and over 30,000 downloads!**
 
-`ollamadiffuser` is in **active development**. **v2.4.0**: **106 models** — 44 native on Apple Silicon through MLX (38 image models, 6 LTX-2 video packs) and 62 through diffusers — with **one-command image, edit and video jobs for scripts and agents, on this machine or another one's GPU**, **Qwen-Image-2.1 editing and its official 8-step Turbo on a Mac**, **video on Mac and NVIDIA**, **LoRAs on both backends**, and a compile-free install with a one-line `curl | sh` installer. See [What's New](#-whats-new) below. Part of the **[LocalKinAI](https://github.com/LocalKinAI)** ecosystem.
+`ollamadiffuser` is in **active development**. **v2.5.0**: **106 models** — 44 native on Apple Silicon through MLX (38 image models, 6 LTX-2 video packs) and 62 through diffusers — with **one server for every model, loaded on demand**, **one-command image, edit and video jobs for scripts and agents, on this machine or another one's GPU**, **Qwen-Image-2.1 editing and its official 8-step Turbo on a Mac**, **video on Mac and NVIDIA**, **LoRAs on both backends**, and a compile-free install with a one-line `curl | sh` installer. See [What's New](#-whats-new) below. Part of the **[LocalKinAI](https://github.com/LocalKinAI)** ecosystem.
 
 ## 🆕 What's New
+
+### v2.5.0 — one server for every model
+
+- **`ollamadiffuser serve` loads the model each request names.** It goes in `model`: a field in `/api/generate`'s JSON, or a form field for img2img, inpaint, ControlNet and video.
+  - `--max-loaded 2` keeps two models in memory, so going back and forth between a drawing model and an editing model costs no reload. Jobs still run one at a time.
+  - `--keep-alive 10m` gives an idle model's memory back.
+  - `run MODEL` still serves that model only.
+  - See [REST API](#rest-api).
+- **The memory check goes by measured peaks.** Every generation records what its model took, and the check uses that number instead of the registry's estimate. Boogu Image Turbo measured 32.1 GB, against 10 GB listed.
+- **Upgrading:** restart servers started before the upgrade. Full notes in [CHANGELOG.md](CHANGELOG.md).
 
 ### v2.4.0 — jobs on another machine's GPU
 
