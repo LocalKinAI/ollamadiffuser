@@ -112,6 +112,8 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history (back to v1.0.0, May 2025)
 # OllamaDiffuser 🎨
 
 [![PyPI version](https://badge.fury.io/py/ollamadiffuser.svg)](https://badge.fury.io/py/ollamadiffuser)
+[![Downloads](https://static.pepy.tech/badge/ollamadiffuser)](https://pepy.tech/project/ollamadiffuser)
+[![Downloads a month](https://img.shields.io/pypi/dm/ollamadiffuser)](https://pypistats.org/packages/ollamadiffuser)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
